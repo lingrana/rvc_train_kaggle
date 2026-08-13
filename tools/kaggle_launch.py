@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import atexit
 import os
-import re
 import secrets
 import signal
 import subprocess
@@ -98,7 +97,9 @@ def main() -> None:
             except OSError:
                 pass
     environment["RVC_CONTROL_SECRET"] = control_secret
-    control_command = [sys.executable, "-u", "-m", "ultimate_rvc.control.app", "--host", "127.0.0.1", "--port", "7860"]
+    is_kaggle = Path("/kaggle").is_dir() or os.environ.get("KAGGLE_KERNEL_RUN_TYPE") or os.environ.get("KAGGLE_URL")
+    control_host = "0.0.0.0" if is_kaggle else "127.0.0.1"
+    control_command = [sys.executable, "-u", "-m", "ultimate_rvc.control.app", "--host", control_host, "--port", "7860"]
 
     def start_control() -> subprocess.Popen[str]:
         process = subprocess.Popen(
@@ -112,54 +113,29 @@ def main() -> None:
     control = start_control()
     wait_for_server(7860, "RVC control console")
 
-    cloudflared = ROOT / "cloudflared-linux-amd64"
-    if not cloudflared.exists():
-        print("[RVC] 下载 cloudflared...", flush=True)
-        import urllib.request
-        url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
-        try:
-            urllib.request.urlretrieve(url, str(cloudflared))
-            cloudflared.chmod(0o755)
-            print("[RVC] cloudflared 下载完成", flush=True)
-        except Exception as e:
-            print(f"[RVC] cloudflared 下载失败: {e}", flush=True)
-            print("[RVC] 跳过隧道，直接访问 http://127.0.0.1:7860", flush=True)
-            cloudflared = None
+    if is_kaggle:
+        print("\n" + "=" * 60)
+        print("训练控制台（Kaggle 代理模式）")
+        print("打开 Kaggle 右侧面板 → HTTP Proxy → 添加端口 7860")
+        print(f"或直接访问：http://localhost:7860")
+        print(f"用户名: {username}")
+        print(f"密码: {password}")
+        print("=" * 60 + "\n")
+        while not shutting_down:
+            exit_code = control.wait()
+            if shutting_down:
+                break
+            print(f"[RVC] 控制服务退出 ({exit_code})，2 秒后自动恢复", flush=True)
+            time.sleep(2)
+            control = start_control()
+            wait_for_server(7860, "RVC control console")
+        return
 
-    if cloudflared and cloudflared.exists():
-        tunnel = subprocess.Popen(
-            [str(cloudflared), "tunnel", "--url", "http://127.0.0.1:7860"],
-            cwd=ROOT,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-        )
-        processes.append(tunnel)
-        lines: list[str] = []
-        threading.Thread(target=stream, args=(tunnel, lines), daemon=True).start()
-        url = None
-        for _ in range(60):
-            url_match = re.search(r"https://[\w.-]+\.trycloudflare\.com", "\n".join(lines[-30:]))
-            if url_match:
-                url = url_match.group(0)
-                break
-            if tunnel.poll() is not None:
-                break
-            time.sleep(1)
-        if not url:
-            raise RuntimeError("Cloudflare tunnel failed to provide a URL")
-        print("\n" + "=" * 60)
-        print(f"训练控制台: {url}")
-        print(f"用户名: {username}")
-        print(f"密码: {password}")
-        print("=" * 60 + "\n")
-    else:
-        print("\n" + "=" * 60)
-        print(f"训练控制台: http://127.0.0.1:7860")
-        print(f"用户名: {username}")
-        print(f"密码: {password}")
-        print("=" * 60 + "\n")
+    print("\n" + "=" * 60)
+    print(f"训练控制台: http://127.0.0.1:7860")
+    print(f"用户名: {username}")
+    print(f"密码: {password}")
+    print("=" * 60 + "\n")
     while not shutting_down:
         exit_code = control.wait()
         if shutting_down:
