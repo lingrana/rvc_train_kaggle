@@ -101,10 +101,21 @@ def train(params: dict[str, Any]) -> Any:
     )
 
 
+def ensure_models() -> None:
+    """Download any missing RVC prerequisites (pitch predictors, embedders,
+    pretrained weights) before a pipeline stage runs."""
+    from ultimate_rvc.rvc.lib.tools.prerequisites_download import (
+        prequisites_download_pipeline,
+    )
+
+    prequisites_download_pipeline(exe=False)
+
+
 def run(job_id: str) -> None:
     job = read_job(job_id)
     params = job["params"]
     try:
+        ensure_models()
         if job["type"] == "preprocess":
             update_job(job_id, stage="preprocessing")
             result = preprocess(params)

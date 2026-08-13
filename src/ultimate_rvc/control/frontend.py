@@ -22,8 +22,7 @@ body.dark .nav{background:rgba(10,10,15,.88)}
 .theme-btn,.sidebar-toggle{width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-dim);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
 .theme-btn:hover,.sidebar-toggle:hover{background:var(--card);color:var(--text)}
 .layout{display:grid;grid-template-columns:1fr 280px;gap:20px;max-width:1100px;margin:0 auto;padding:24px 32px 60px;transition:all .3s}
-body.sidebar-hidden .layout{grid-template-columns:1fr;justify-items:center}
-body.sidebar-hidden .main{max-width:800px;width:100%}
+body.sidebar-hidden .layout{grid-template-columns:minmax(0,736px);justify-content:center}
 .main{min-width:0}
 .hero{margin-bottom:24px}
 .hero h1{font-size:28px;font-weight:700;letter-spacing:-.5px;line-height:1.2;margin-bottom:6px}
@@ -36,8 +35,8 @@ body.sidebar-hidden .main{max-width:800px;width:100%}
 .tab .tab-num{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:5px;background:var(--border-light);color:var(--text-muted);font-size:10px;font-weight:700;margin-right:6px;transition:all .2s}
 .tab.active .tab-num{background:var(--text);color:#fff}
 .tab.done .tab-num{background:var(--green-dim);color:var(--green)}
-.tab.done .tab-num::after{content:'\2713'}
-.tab[data-step="1"] .tab-num::before{content:'1'}.tab[data-step="2"] .tab-num::before{content:'2'}.tab[data-step="3"] .tab-num::before{content:'3'}
+.tab.done .tab-num::after{content:'¹3'}
+.tab[data-step="1"] .tab-num::before{content:'1'}.tab[data-step="2"] .tab-num::before{content:'2'}.tab[data-step="3"] .tab-num::before{content:'3'}.tab[data-step="4"] .tab-num::before{content:'4'}
 .tab.done .tab-num::before{content:none !important}
 .panel{display:none}
 .panel.active{display:block}
@@ -54,6 +53,7 @@ body.sidebar-hidden .main{max-width:800px;width:100%}
 .field-label{font-size:11px;font-weight:600;color:var(--text-muted);letter-spacing:.3px}
 .field-input{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;width:100%;transition:border-color .2s}
 .field-input:focus{border-color:var(--accent)}
+.field-input:disabled{opacity:.5;cursor:not-allowed}
 .sel{position:relative;width:100%}
 .sel-btn{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 28px 8px 10px;color:var(--text);font-size:13px;width:100%;cursor:pointer;display:flex;align-items:center;gap:8px;transition:border-color .2s;text-align:left}
 .sel-btn:hover{border-color:var(--text-muted)}
@@ -78,7 +78,7 @@ body.dark .sel-dd{box-shadow:0 8px 32px rgba(0,0,0,.4)}
 .multi .sel-opt{position:relative;padding-left:32px}
 .multi .sel-opt::before{content:'';position:absolute;left:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:4px;border:1.5px solid var(--border);background:var(--bg);transition:all .12s}
 .multi .sel-opt.selected::before{background:var(--accent);border-color:var(--accent)}
-.multi .sel-opt.selected::after{content:'\2713';position:absolute;left:13px;top:50%;transform:translateY(-50%);color:#fff;font-size:10px;font-weight:700}
+.multi .sel-opt.selected::after{content:'¹3';position:absolute;left:13px;top:50%;transform:translateY(-50%);color:#fff;font-size:10px;font-weight:700}
 .multi .sel-opt .oi{display:none}
 .multi .sel-opt .oc{display:none}
 .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px}
@@ -107,6 +107,19 @@ body.dark .sel-dd{box-shadow:0 8px 32px rgba(0,0,0,.4)}
 .progress-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .5s}
 .progress-stats{display:flex;gap:16px;margin-top:6px;font-size:12px;color:var(--text-muted)}
 .progress-stats b{color:var(--text);font-weight:600}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-2px)}to{opacity:1;transform:none}}
+.file-row.playing{background:var(--green-dim)}
+.wplayer{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;margin:4px 0;width:100%;flex-basis:100%}
+.wplay{width:30px;height:30px;border:none;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0}
+.wplay:hover{transform:scale(1.08);opacity:.9}
+.wwave{position:relative;flex:1;height:32px;cursor:pointer;overflow:hidden}
+.wwave-bars{position:absolute;inset:0;display:flex;align-items:center;gap:2px;padding:0 2px}
+.wwave-bars i{width:3px;border-radius:2px;background:var(--border-light);flex:none}
+.wwave-fill{position:absolute;left:0;top:0;bottom:0;width:0;overflow:hidden;transition:width .2s linear}
+.wwave-fill .wwave-bars i{background:linear-gradient(180deg,var(--accent),var(--accent2))}
+.wtime{font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0}
+.wplaying{animation:wavePulse 1s ease-in-out infinite alternate}
+@keyframes wavePulse{from{box-shadow:0 0 0 0 rgba(0,102,255,.35)}to{box-shadow:0 0 0 6px rgba(0,102,255,0)}}
 .log{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'SF Mono','JetBrains Mono',monospace;font-size:11px;color:var(--text-muted);line-height:1.6;max-height:80px;overflow-y:auto;margin-top:8px}
 .btns{display:flex;gap:8px;margin-top:16px}
 .btn{padding:8px 0;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;text-align:center}
@@ -122,7 +135,7 @@ body.dark .btn-primary{background:#fff;color:#000}
 .output.ok{color:var(--green);border-color:var(--green)}
 .output.err{color:var(--red);border-color:var(--red)}
 .sidebar{position:sticky;top:68px;align-self:start;transition:all .3s;overflow:hidden}
-.sidebar.hidden{width:0;padding:0;margin:0;opacity:0;pointer-events:none}
+.sidebar.hidden{display:none}
 .side-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px}
 .side-title{font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:12px}
 .side-info{display:flex;flex-direction:column;gap:8px}
@@ -190,8 +203,6 @@ footer a:hover{color:var(--accent)}
   <div class="nav-right">
     <button class="nav-btn" id="kaggle-settings">Kaggle</button>
     <button class="nav-btn" id="resume-history" disabled>恢复历史</button>
-    <button class="nav-btn" onclick="document.querySelector('[data-tab=progress]').click()">训练进度</button>
-    <button class="nav-btn" onclick="document.querySelector('[data-tab=models]').click()">模型下载</button>
     <button class="theme-btn" onclick="toggleTheme()" title="切换主题" id="theme-btn">☀️</button>
     <button class="sidebar-toggle" onclick="toggleSidebar()" title="切换侧栏">📊</button>
     <button class="nav-btn" id="logout">退出</button>
@@ -200,13 +211,21 @@ footer a:hover{color:var(--accent)}
 
 <div class="layout">
 <div class="main">
-  <div class="hero"><h1>RVC 语音模型训练</h1><p>独立任务进程 · 断线自动恢复 · RVC v2 48k</p></div>
+  <div class="hero" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+    <div><h1>RVC 语音模型训练</h1><p>独立任务进程 · 断线自动恢复 · RVC v2 48k</p></div>
+    <div class="field" style="width:240px">
+      <div class="field-label">当前模型</div>
+      <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">🧩</span><span class="st">选择模型...</span><span class="sa"></span></div>
+        <div class="sel-dd" id="model-options"></div></div>
+    </div>
+  </div>
   <div id="notice" class="notice"></div>
 
   <div class="tabs">
-    <div class="tab active" data-step="1" onclick="switchTab(1)"><span class="tab-num"></span>数据预处理</div>
-    <div class="tab" data-step="2" onclick="switchTab(2)"><span class="tab-num"></span>特征提取</div>
-    <div class="tab" data-step="3" onclick="switchTab(3)"><span class="tab-num"></span>模型训练</div>
+    <div class="tab active" data-step="1" onclick="switchTab(1)"><span class="tab-num"></span>数据上传</div>
+    <div class="tab" data-step="2" onclick="switchTab(2)"><span class="tab-num"></span>数据预处理</div>
+    <div class="tab" data-step="3" onclick="switchTab(3)"><span class="tab-num"></span>特征提取</div>
+    <div class="tab" data-step="4" onclick="switchTab(4)"><span class="tab-num"></span>模型训练</div>
   </div>
 
   <!-- ═══════ 步骤 1 ═══════ -->
@@ -242,29 +261,26 @@ footer a:hover{color:var(--accent)}
     </div>
 
     <div class="section">
-      <div class="section-header"><span class="section-num">03</span><span class="section-title">文件列表</span></div>
-      <div class="card-grid" style="grid-template-columns:2fr 1fr;align-items:stretch">
-        <div class="card" style="margin-bottom:0">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <span style="font-size:12px;font-weight:600;color:var(--text-muted)">数据集文件</span>
-            <span id="file-count" style="font-size:10px;padding:2px 8px;border-radius:4px;background:var(--bg);color:var(--text-muted)">0 个音频</span>
-          </div>
-          <div id="file-list" style="max-height:180px;overflow-y:auto"><div style="padding:12px;color:var(--text-muted);font-size:12px">选择数据集后显示文件列表</div></div>
+      <div class="section-header"><span class="section-num">03</span><span class="section-title">数据集文件</span></div>
+      <div class="card" style="margin-bottom:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:12px;font-weight:600;color:var(--text-muted)">点击文件播放预览</span>
+          <span id="file-count" style="font-size:10px;padding:2px 8px;border-radius:4px;background:var(--bg);color:var(--text-muted)">0 个音频</span>
         </div>
-        <div class="player">
-          <div class="player-title">音频预览</div>
-          <audio id="audio-preview" controls style="width:100%;height:36px;border-radius:6px"></audio>
-        </div>
+        <div id="file-list" style="max-height:240px;overflow-y:auto"><div style="padding:12px;color:var(--text-muted);font-size:12px">选择数据集后显示文件列表</div></div>
       </div>
     </div>
+  </div>
 
-    <div class="collapse">
-      <div class="collapse-head" onclick="accToggle(this)"><span>⚙️ 预处理选项</span><span class="arrow">▶</span></div>
-      <div class="collapse-body">
+  <!-- ═══════ 步骤 2 ═══════ -->
+  <div class="panel" data-step="2">
+    <div class="section">
+      <div class="section-header"><span class="section-num">01</span><span class="section-title">预处理选项</span></div>
+      <div class="card">
         <div class="card-grid c3">
           <div class="field"><div class="field-label">采样率</div>
             <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">📊</span><span class="st">48000 Hz</span><span class="sa"></span></div>
-              <div class="sel-dd"><div class="sel-opt selected" onclick="selPick(this,'sample-rate')" data-value="48000"><span class="oi">📊</span><span class="ol">48000 Hz</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'sample-rate')" data-value="40000"><span class="oi">📊</span><span class="ol">40000 Hz</span><span class="oc">✓</span></div><div class="sel-opt" onclick="selPick(this,'sample-rate')" data-value="32000"><span class="oi">📊</span><span class="ol">32000 Hz</span><span class="oc">✓</span></div></div></div>
+              <div class="sel-dd"><div class="sel-opt selected" onclick="selPick(this,'sample-rate')" data-value="48000"><span class="oi">📊</span><span class="ol">48000 Hz</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'sample-rate')" data-value="40000"><span class="oi">📊</span><span class="ol">40000 Hz</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'sample-rate')" data-value="32000"><span class="oi">📊</span><span class="ol">32000 Hz</span><span class="oc">✓</span></div></div></div>
           </div>
           <div class="field"><div class="field-label">归一化模式</div>
             <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">⚖️</span><span class="st">Post</span><span class="sa"></span></div>
@@ -293,19 +309,13 @@ footer a:hover{color:var(--accent)}
       <button class="btn btn-primary" id="preprocess-btn" onclick="submitJob('preprocess')">预处理数据集</button>
       <div class="output" id="preprocess-msg"></div>
     </div>
-    <div class="section"><div class="section-header"><span class="section-num">04</span><span class="section-title">预处理进度</span></div><div class="card" id="preprocess-progress-card"><div class="empty">暂无预处理任务</div></div></div>
   </div>
 
-  <!-- ═══════ 步骤 2 ═══════ -->
-  <div class="panel" data-step="2">
+  <!-- ═══════ 步骤 3 ═══════ -->
+  <div class="panel" data-step="3">
     <div class="section">
       <div class="section-header"><span class="section-num">01</span><span class="section-title">提取配置</span></div>
-      <div class="card">
-        <div class="card-grid c3">
-          <div class="field"><div class="field-label">模型选择</div>
-            <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">🧩</span><span class="st">选择已预处理模型...</span><span class="sa"></span></div>
-              <div class="sel-dd" id="extract-model-options"></div></div>
-          </div>
+      <div class="card-grid c3">
           <div class="field"><div class="field-label">F0 提取方法</div>
             <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">🔬</span><span class="st">RMVPE</span><span class="sa"></span></div>
               <div class="sel-dd"><div class="sel-opt selected" onclick="selPick(this,'f0-method')" data-value="rmvpe"><span class="oi">🔬</span><span class="ol">RMVPE</span><span class="ob">推荐</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'f0-method')" data-value="pm"><span class="oi">📡</span><span class="ol">PM</span><span class="oc">✓</span></div></div></div>
@@ -318,43 +328,20 @@ footer a:hover{color:var(--accent)}
           <div class="field"><div class="field-label">包含静音数</div><input class="field-input" id="mutes" type="number" value="2" min="0" max="10"></div>
         </div>
       </div>
-    </div>
-
-    <div class="collapse">
-      <div class="collapse-head" onclick="accToggle(this)"><span>⚙️ 高级选项</span><span class="arrow">▶</span></div>
-      <div class="collapse-body">
-        <div class="card-grid c3">
-          <div class="field"><div class="field-label">CPU 核心数</div><input class="field-input" id="extraction-cores" type="number" value="4"></div>
-          <div class="field"><div class="field-label">加速方式</div>
-            <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">⚡</span><span class="st">GPU</span><span class="sa"></span></div>
-              <div class="sel-dd"><div class="sel-opt selected" onclick="selPick(this,'extraction-device')" data-value="GPU"><span class="oi">⚡</span><span class="ol">GPU</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'extraction-device')" data-value="Automatic"><span class="oi">🤖</span><span class="ol">自动</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'extraction-device')" data-value="CPU"><span class="oi">💻</span><span class="ol">CPU</span><span class="oc">✓</span></div></div></div>
-          </div>
-          <div class="field"><div class="field-label">GPU 选择</div>
-            <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">⚡</span><span class="st">选择 GPU...</span><span class="sa"></span></div>
-              <div class="sel-dd" id="extraction-gpu-options"></div></div>
-            <input type="hidden" id="extraction-gpus" value="0"></div>
-        </div>
-      </div>
-    </div>
 
     <div class="btns">
       <button class="btn btn-ghost" onclick="resetStep2()">重置</button>
       <button class="btn btn-primary" id="extract-btn" onclick="submitJob('extract')">提取特征</button>
       <div class="output" id="extract-msg"></div>
     </div>
-    <div class="section"><div class="section-header"><span class="section-num">02</span><span class="section-title">特征提取进度</span></div><div class="card" id="extract-progress-card"><div class="empty">暂无特征提取任务</div></div></div>
   </div>
 
-  <!-- ═══════ 步骤 3 ═══════ -->
-  <div class="panel" data-step="3">
+  <!-- ═══════ 步骤 4 ═══════ -->
+  <div class="panel" data-step="4">
     <div class="section">
       <div class="section-header"><span class="section-num">01</span><span class="section-title">基础配置</span></div>
       <div class="card">
         <div class="card-grid c3">
-          <div class="field"><div class="field-label">模型选择</div>
-            <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">🧩</span><span class="st">选择已提取特征模型...</span><span class="sa"></span></div>
-              <div class="sel-dd" id="train-model-options"></div></div>
-          </div>
           <div class="field"><div class="field-label">模型版本</div>
             <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">🏷️</span><span class="st">RVC v2</span><span class="sa"></span></div>
               <div class="sel-dd"><div class="sel-opt selected" onclick="selPick(this,'version')" data-value="v2"><span class="oi">🏷️</span><span class="ol">RVC v2</span><span class="ob">推荐</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'version')" data-value="v1"><span class="oi">🏷️</span><span class="ol">RVC v1</span><span class="oc">✓</span></div></div></div>
@@ -366,14 +353,10 @@ footer a:hover{color:var(--accent)}
           <div class="toggle-row"><span class="toggle-label">F0 音高引导</span><div class="toggle on" data-field="f0-guidance" onclick="toggleSwitch(this)"></div></div>
           <div class="toggle-row"><span class="toggle-label">过拟合检测</span><div class="toggle on" data-field="detect-overtrain" onclick="toggleSwitch(this)"></div></div>
         </div>
-        <div class="field" style="margin-top:12px"><div class="field-label">过拟合阈值</div><input class="field-input" id="overtrain-threshold" type="number" value="30"></div>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-header"><span class="section-num">02</span><span class="section-title">训练进度</span></div>
-      <div class="card" id="train-progress-card">
-        <div class="empty">暂无训练任务</div>
+        <div class="card-grid c2" style="margin-top:12px">
+          <div class="field"><div class="field-label">保存间隔</div><input class="field-input" id="save" type="number" value="25" min="1" max="100"></div>
+          <div class="field"><div class="field-label">过拟合阈值</div><input class="field-input" id="overtrain-threshold" type="number" value="30"></div>
+        </div>
       </div>
     </div>
 
@@ -402,7 +385,6 @@ footer a:hover{color:var(--accent)}
       <div class="collapse-head" onclick="accToggle(this)"><span>⚙️ 保存与上传</span><span class="arrow">▶</span></div>
       <div class="collapse-body">
         <div class="card-grid c2">
-          <div class="field"><div class="field-label">保存间隔</div><input class="field-input" id="save" type="number" value="25" min="1" max="100"></div>
           <div class="field" id="upload-name-wrap" style="display:none"><div class="field-label">上传模型名称</div><input class="field-input" id="upload-name"></div>
         </div>
         <div class="card-grid c2" style="margin-top:12px">
@@ -480,7 +462,12 @@ function toggleTheme(){document.body.classList.toggle('dark');$('#theme-btn').te
 function toggleSidebar(){document.body.classList.toggle('sidebar-hidden');$('#sidebar').classList.toggle('hidden')}
 function switchTab(n){document.querySelectorAll('.tab').forEach(el=>{el.classList.remove('active');if(parseInt(el.dataset.step)===n)el.classList.add('active')});document.querySelectorAll('.panel').forEach(el=>{el.classList.remove('active');if(parseInt(el.dataset.step)===n)el.classList.add('active')})}
 function accToggle(el){el.classList.toggle('open');el.nextElementSibling.classList.toggle('open')}
-function toggleSwitch(el){el.classList.toggle('on')}
+function toggleSwitch(el){el.classList.toggle('on');if(el.dataset.field==='detect-overtrain'){const t=$('#overtrain-threshold');if(t)t.disabled=!el.classList.contains('on')}}
+function setSel(fieldId,value){const opt=document.querySelector('.sel-opt[data-value="'+value+'"]');if(opt)selPick(opt,fieldId)}
+function setToggle(fieldId,on){const el=$('[data-field="'+fieldId+'"]');if(el){el.classList.toggle('on',on);if(fieldId==='detect-overtrain'){const t=$('#overtrain-threshold');if(t)t.disabled=!on}}}
+function resetStep1(){setSel('sample-rate','48000');setSel('normalization','post');setSel('split','Automatic');$('#chunk').value=3;$('#overlap').value=.3;$('#preprocess-cores').value=4;setToggle('filter-audio',true);setToggle('clean-audio',false);$('#clean-strength').value=.7}
+function resetStep2(){setSel('f0-method','rmvpe');setSel('embedder','local-hubert-base');$('#custom-embedder').value='';$('#mutes').value=2}
+function resetStep3(){setSel('version','v2');$('#epochs').value=300;$('#batch').value=8;setToggle('f0-guidance',true);setToggle('detect-overtrain',true);$('#overtrain-threshold').value=30;$('#save').value=25;setSel('vocoder','HiFi-GAN');setSel('index','Faiss');setSel('pretrained','Default');$('#custom-pretrained').value='';setToggle('save-checkpoints',false);setToggle('save-weights',false);setToggle('clear-data',false);setToggle('upload-model',false);$('#upload-name').value='';$('#upload-name-wrap').style.display='none';setSel('training-device','GPU');setSel('precision','fp32');setToggle('preload',true);setToggle('reduce-memory',false)}
 
 function selToggle(el){const dd=el.nextElementSibling;document.querySelectorAll('.sel-dd.open').forEach(d=>{if(d!==dd)d.classList.remove('open')});document.querySelectorAll('.sel-btn.open').forEach(c=>{if(c!==el)c.classList.remove('open')});el.classList.toggle('open');dd.classList.toggle('open')}
 function selPick(opt,fieldId){const wrap=opt.closest('.sel'),btn=wrap.querySelector('.sel-btn');btn.querySelector('.st').textContent=opt.querySelector('.ol').textContent;btn.querySelector('.si').textContent=opt.querySelector('.oi').textContent;wrap.querySelectorAll('.sel-opt').forEach(o=>o.classList.remove('selected'));opt.classList.add('selected');btn.classList.remove('open');wrap.querySelector('.sel-dd').classList.remove('open');if(fieldId)state.selectedValues[fieldId]=opt.dataset.value;onFieldChange(fieldId,opt.dataset.value)}
@@ -507,32 +494,53 @@ async function loadFiles(dataset){
     const icons={'.wav':'🎵','.flac':'🎶','.mp3':'🔊','.ogg':'🔉','.m4a':'🎧'};
     el.innerHTML=files.map(f=>{
       const size=f.size>1048576?(f.size/1048576).toFixed(1)+' MB':(f.size/1024).toFixed(0)+' KB';
-      return'<div class="file-row" onclick="previewAudio(\''+d.dataset+'/'+f.name+'\')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;transition:background .2s" onmouseover="this.style.background=\'var(--hover)\'" onmouseout="this.style.background=\'\'"><span style="font-size:14px">'+(icons[f.ext]||'📄')+'</span><span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+f.name+'</span><span style="font-size:11px;color:var(--text-muted)">'+size+'</span></div>'
+      return'<div class="file-row" onclick="previewAudio(this,\''+d.dataset+'/'+f.name+'\')" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;transition:background .2s" onmouseover="this.style.background=\'var(--hover)\'" onmouseout="this.style.background=\'\'"><span style="font-size:14px">'+(icons[f.ext]||'📄')+'</span><span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+f.name+'</span><span class="fz-size" style="font-size:11px;color:var(--text-muted)">'+size+'</span></div>'
     }).join('');
     $('#file-count').textContent=files.length+' 个音频';
   }catch(err){el.innerHTML='<div style="padding:12px;color:var(--red);font-size:12px">'+err.message+'</div>'}
 }
 
-function previewAudio(path){
-  const audio=$('#audio-preview');
-  if(!audio){return}
-  audio.src='/api/v1/audio/'+encodeURIComponent(path);
-  audio.style.display='block';
-  audio.play().catch(()=>{});
+function previewAudio(row,path){
+  if(row.querySelector('.wplayer')){
+    const wp=row.querySelector('.wplayer');
+    if(wp._audio)wp._audio.pause();
+    wp.remove();row.classList.remove('playing');
+    return
+  }
+  document.querySelectorAll('.file-row.playing').forEach(r=>r.classList.remove('playing'));
+  document.querySelectorAll('#file-list .wplayer').forEach(w=>w.remove());
+  row.classList.add('playing');
+  const wrap=document.createElement('div');wrap.className='wplayer';wrap.addEventListener('click',e=>e.stopPropagation());
+  wrap.innerHTML='<button class="wplay">▶</button><div class="wwave"><div class="wwave-bars"></div><div class="wwave-fill"><div class="wwave-bars"></div></div></div><span class="wtime">0:00 / --:--</span>';
+  const play=wrap.querySelector('.wplay'),wave=wrap.querySelector('.wwave'),time=wrap.querySelector('.wtime');
+  const HEIGHTS=[6,12,20,28,16,8,22,30,14,24,10,18,26,12,6,20,30,16,24,8,14,28,10,22,18,6,26,12,20,30,8,16,24,10,28,14,6,18,26,22];
+  [wave.firstElementChild,wave.children[1].firstElementChild].forEach(bars=>{bars.innerHTML=HEIGHTS.map(h=>'<i style="height:'+h+'px"></i>').join('')});
+  const fill=wave.querySelector('.wwave-fill');
+  const audio=new Audio('/api/v1/audio/'+encodeURIComponent(path));
+  wrap._audio=audio;
+  audio.preload='metadata';
+  const fmt=s=>{if(!isFinite(s))return'--:--';s=Math.max(0,Math.floor(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+  audio.addEventListener('loadedmetadata',()=>{time.textContent='0:00 / '+fmt(audio.duration)});
+  audio.addEventListener('timeupdate',()=>{if(audio.duration){fill.style.width=(audio.currentTime/audio.duration*100)+'%';time.textContent=fmt(audio.currentTime)+' / '+fmt(audio.duration)}});
+  audio.addEventListener('ended',()=>{play.textContent='▶';play.classList.remove('wplaying');fill.style.width='0%'});
+  const toggle=()=>{if(audio.paused){audio.play().then(()=>{play.textContent='⏸';play.classList.add('wplaying')}).catch(()=>{play.textContent='▶'})}else{audio.pause();play.textContent='▶';play.classList.remove('wplaying')}};
+  play.onclick=toggle;
+  wave.onclick=e=>{if(!audio.duration)return;const r=wave.getBoundingClientRect();audio.currentTime=(e.clientX-r.left)/r.width*audio.duration;toggle()};
+  row.append(wrap);
 }
 
 function selectedDataset(){return state.selectedValues['dataset-type']==='existing'?(state.selectedValues['existing-dataset']||''):($('#dataset').value.trim()||'')}
 function checked(fieldId){return $('[data-field="'+fieldId+'"]').classList.contains('on')}
 function gpuIds(id){return ($(id)?$(id).value:'').split(',').map(x=>Number(x.trim())).filter(Number.isInteger)}
 
-function params(kind){const modelName=kind==='preprocess'?($('#dataset').value.trim()||'MyModel'):state.selectedValues[kind==='extract'?'extract-model':'train-model'];if(!modelName)throw new Error('请先选择模型');return{model_name:modelName,dataset_name:selectedDataset(),sample_rate:Number(state.selectedValues['sample-rate']||'48000'),normalization_mode:state.selectedValues['normalization']||'post',filter_audio:checked('filter-audio'),clean_audio:checked('clean-audio'),clean_strength:Number($('#clean-strength').value),split_method:state.selectedValues['split']||'Automatic',chunk_len:Number($('#chunk').value),overlap_len:Number($('#overlap').value),preprocess_cores:Number($('#preprocess-cores').value),f0_method:state.selectedValues['f0-method']||'rmvpe',embedder_model:state.selectedValues['embedder']||'local-hubert-base',custom_embedder_model:$('#custom-embedder')?$('#custom-embedder').value.trim():null,include_mutes:Number($('#mutes').value),extraction_cores:Number($('#extraction-cores').value),extraction_device:state.selectedValues['extraction-device']||'GPU',extraction_gpu_ids:gpuIds('#extraction-gpus'),version:state.selectedValues['version']||'v2',f0_guidance:checked('f0-guidance'),epochs:Number($('#epochs').value),batch_size:Number($('#batch').value),detect_overtraining:checked('detect-overtrain'),overtraining_threshold:Number($('#overtrain-threshold').value),vocoder:state.selectedValues['vocoder']||'HiFi-GAN',index_algorithm:state.selectedValues['index']||'Faiss',pretrained_type:state.selectedValues['pretrained']||'Default',custom_pretrained_model:$('#custom-pretrained')?$('#custom-pretrained').value.trim():null,save_interval:Number($('#save').value),save_all_checkpoints:checked('save-checkpoints'),save_all_weights:checked('save-weights'),clear_saved_data:checked('clear-data'),upload_model:checked('upload-model'),upload_name:$('#upload-name')?$('#upload-name').value.trim():null,training_device:state.selectedValues['training-device']||'GPU',training_gpu_ids:gpuIds('#training-gpus'),precision:state.selectedValues['precision']||'fp32',preload_dataset:checked('preload'),reduce_memory_usage:checked('reduce-memory')}}
+function params(kind){const modelName=kind==='preprocess'?($('#dataset').value.trim()||'MyModel'):(state.selectedValues['model']||'');if(!modelName)throw new Error('请先选择模型');return{model_name:modelName,dataset_name:selectedDataset(),sample_rate:Number(state.selectedValues['sample-rate']||'48000'),normalization_mode:state.selectedValues['normalization']||'post',filter_audio:checked('filter-audio'),clean_audio:checked('clean-audio'),clean_strength:Number($('#clean-strength').value),split_method:state.selectedValues['split']||'Automatic',chunk_len:Number($('#chunk').value),overlap_len:Number($('#overlap').value),preprocess_cores:Number($('#preprocess-cores').value),f0_method:state.selectedValues['f0-method']||'rmvpe',embedder_model:state.selectedValues['embedder']||'local-hubert-base',custom_embedder_model:$('#custom-embedder')?$('#custom-embedder').value.trim():null,include_mutes:Number($('#mutes').value),extraction_cores:4,extraction_device:'CPU',version:state.selectedValues['version']||'v2',f0_guidance:checked('f0-guidance'),epochs:Number($('#epochs').value),batch_size:Number($('#batch').value),detect_overtraining:checked('detect-overtrain'),overtraining_threshold:Number($('#overtrain-threshold').value),vocoder:state.selectedValues['vocoder']||'HiFi-GAN',index_algorithm:state.selectedValues['index']||'Faiss',pretrained_type:state.selectedValues['pretrained']||'Default',custom_pretrained_model:$('#custom-pretrained')?$('#custom-pretrained').value.trim():null,save_interval:Number($('#save').value),save_all_checkpoints:checked('save-checkpoints'),save_all_weights:checked('save-weights'),clear_saved_data:checked('clear-data'),upload_model:checked('upload-model'),upload_name:$('#upload-name')?$('#upload-name').value.trim():null,training_device:state.selectedValues['training-device']||'GPU',training_gpu_ids:gpuIds('#training-gpus'),precision:state.selectedValues['precision']||'fp32',preload_dataset:checked('preload'),reduce_memory_usage:checked('reduce-memory')}}
 
-async function submitJob(kind){notice('');try{const key=crypto.randomUUID(),jobParams=params(kind);const r=await api('/api/v1/jobs/'+kind,{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':key},body:JSON.stringify(jobParams)});const job=await r.json();if(kind==='preprocess'){selectModel('extract-model',job.params.model_name);selectModel('train-model',job.params.model_name)}if(r.status===409){notice('已有任务正在运行');renderJobs([job,...state.lastJobs.filter(x=>x.id!==job.id)])}else{renderJobs([job,...state.lastJobs.filter(x=>x.id!==job.id)])}}catch(err){notice(err.message)}}
+async function submitJob(kind){notice('');try{const key=crypto.randomUUID(),jobParams=params(kind);const r=await api('/api/v1/jobs/'+kind,{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':key},body:JSON.stringify(jobParams)});const job=await r.json();if(kind==='preprocess'){selectModel('model',job.params.model_name)}if(r.status===409){notice('已有任务正在运行');renderJobs([job,...state.lastJobs.filter(x=>x.id!==job.id)])}else{renderJobs([job,...state.lastJobs.filter(x=>x.id!==job.id)])}}catch(err){notice(err.message)}}
 
 async function stopJob(){const active=state.lastJobs.find(j=>['queued','running','stopping'].includes(j.phase));if(!active)return;try{await api('/api/v1/jobs/'+active.id+'/stop',{method:'POST'})}catch(err){notice(err.message)}}
 
 async function digest(blob){const value=await crypto.subtle.digest('SHA-256',await blob.arrayBuffer());return[...new Uint8Array(value)].map(x=>x.toString(16).padStart(2,'0')).join('')}
-async function uploadFile(file,dataset,row){const started=await(await api('/api/v1/uploads/direct',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataset,filename:file.name,size:file.size})})).json(),xhr=new XMLHttpRequest();return new Promise((resolve,reject)=>{xhr.upload.onprogress=e=>{if(e.lengthComputable){const pct=Math.min(100,Math.round(e.loaded/e.total*100)),mb=(e.loaded/1048576).toFixed(1),totalMb=(e.total/1048576).toFixed(1);row.querySelector('i').style.width=pct+'%';text(row.querySelector('.upload-status'),pct>=100?'完成 ✓':pct+'% ('+mb+' MB / '+totalMb+' MB)');row.querySelector('.upload-status').style.color=pct>=100?'var(--green)':'var(--text-muted)'}};xhr.onload=()=>{if(xhr.status>=200&&xhr.status<300){text(row.querySelector('.upload-status'),'完成 ✓');row.querySelector('.upload-status').style.color='var(--green)';resolve()}else{try{const d=JSON.parse(xhr.responseText);reject(new Error(d.detail||d.message||'上传失败'))}catch{reject(new Error('上传失败'))}}};xhr.onerror=()=>reject(new Error('网络错误'));xhr.open('PUT','/api/v1/uploads/direct/'+encodeURIComponent(started.id));xhr.setRequestHeader('Content-Type','application/octet-stream');xhr.send(file)})}
+async function uploadFile(file,dataset,row){const started=await(await api('/api/v1/uploads/direct',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataset,filename:file.name,size:file.size})})).json(),xhr=new XMLHttpRequest(),lastReported={v:0};return new Promise((resolve,reject)=>{xhr.upload.onprogress=e=>{if(e.lengthComputable){const pct=Math.min(100,Math.round(e.loaded/e.total*100)),mb=(e.loaded/1048576).toFixed(1),totalMb=(e.total/1048576).toFixed(1);row.querySelector('i').style.width=pct+'%';text(row.querySelector('.upload-status'),pct>=100?'完成 ✓':pct+'% ('+mb+' MB / '+totalMb+' MB)');row.querySelector('.upload-status').style.color=pct>=100?'var(--green)':'var(--text-muted)';if(e.loaded-lastReported.v>262144){lastReported.v=e.loaded;fetch('/api/v1/uploads/direct/'+encodeURIComponent(started.id)+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({received:Math.round(e.loaded)})}).catch(()=>{})}}};xhr.onload=()=>{fetch('/api/v1/uploads/direct/'+encodeURIComponent(started.id)+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({received:file.size})}).catch(()=>{});if(xhr.status>=200&&xhr.status<300){text(row.querySelector('.upload-status'),'完成 ✓');row.querySelector('.upload-status').style.color='var(--green)';resolve()}else{try{const d=JSON.parse(xhr.responseText);reject(new Error(d.detail||d.message||'上传失败'))}catch{reject(new Error('上传失败'))}}};xhr.onerror=()=>reject(new Error('网络错误'));xhr.open('PUT','/api/v1/uploads/direct/'+encodeURIComponent(started.id));xhr.setRequestHeader('Content-Type','application/octet-stream');xhr.send(file)})}
 
 $('#upload-zone').addEventListener('dragover',e=>{e.preventDefault();$('#upload-zone').classList.add('dragover')});
 $('#upload-zone').addEventListener('dragleave',()=>$('#upload-zone').classList.remove('dragover'));
@@ -544,13 +552,10 @@ async function handleFiles(files){const filesList=[...files],dataset=selectedDat
 const fmt=s=>{s=Math.max(0,Math.round(Number(s)||0));return[Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(x=>String(x).padStart(2,'0')).join(':')};
 
 function renderJobs(jobs){state.lastJobs=jobs;const active=jobs.find(j=>['queued','running','stopping'].includes(j.phase));const completed=jobs.filter(j=>j.phase==='completed'||j.phase==='failed');
-renderActiveJob(active);renderSideModel(active);renderSideDownloads(completed);renderSideHistory(completed);
+renderSideModel(active);renderSideDownloads(completed);renderSideHistory(completed);
 ['preprocess-btn','extract-btn','train-btn'].forEach(id=>{$('#'+id).disabled=!!active});$('#stop-btn').style.display=active?'':'none'}
 
-function progressCard(active,empty){const p=active.progress||{},pct=Math.max(0,Math.min(100,Number(p.percent)||0)),el=$(active.type==='preprocess'?'#preprocess-progress-card':active.type==='extract'?'#extract-progress-card':'#train-progress-card');if(!active){return}el.innerHTML='';const stages={preprocessing:'正在预处理',extracting:'正在提取特征',training:'正在训练',uploading:'正在上传 Kaggle Dataset'};const phaseLabel=p.phase_label||stages[active.stage]||active.phase;const head=document.createElement('div');head.className='progress-head';head.innerHTML='<span class="progress-model">'+(active.params?.model_name||'')+' · '+active.type+'</span><span class="progress-pct">'+phaseLabel+'</span>';const bar=document.createElement('div');bar.className='progress-bar';bar.innerHTML='<div class="progress-fill" style="width:'+pct+'%"></div>';const stats=document.createElement('div');stats.className='progress-stats';const values=active.type==='train'?[['轮次',`${p.epoch||0} / ${p.total_epochs||0}`],['批次',p.total_batches?`${p.batch||0} / ${p.total_batches}`:'--'],['已用',fmt(p.elapsed_seconds)],['剩余',p.eta_seconds?fmt(p.eta_seconds):'--:--:--'],['损失',`G ${Number(p.loss_g||0).toFixed(4)} · D ${Number(p.loss_d||0).toFixed(4)}`]]:[['进度',pct.toFixed(1)+'%'],['状态',p.stage_detail||phaseLabel],['已用',fmt(p.elapsed_seconds)]];values.forEach(([a,b])=>{const x=document.createElement('span');x.innerHTML=a+' <b>'+b+'</b>';stats.append(x)});el.append(head,bar,stats);if(active.error||p.error||p.warning){const n=document.createElement('div');n.className='notice show';n.textContent=active.error||p.error||p.warning;el.append(n)}if(p.log_lines){const log=document.createElement('div');log.className='log';log.textContent=p.log_lines;el.append(log)}}
-function renderActiveJob(active){const cards=[['#preprocess-progress-card','暂无预处理任务'],['#extract-progress-card','暂无特征提取任务'],['#train-progress-card','暂无训练任务']];cards.forEach(([id,empty])=>{const el=$(id);if(el)el.innerHTML='<div class="empty">'+empty+'</div>'});if(active)progressCard(active)}
-
-function renderSideModel(active){const el=$('#side-model-info');if(!active||!active.params){el.innerHTML='<div style="font-size:12px;color:var(--text-muted)">等待训练任务...</div>';return}const p=active.progress||{};el.innerHTML=[['模型',active.params.model_name||''],['阶段',active.phase],['轮次',`${p.epoch||0} / ${p.total_epochs||0}`],['损失',`G ${Number(p.loss_g||0).toFixed(4)} · D ${Number(p.loss_d||0).toFixed(4)}`]].map(([a,b])=>'<div class="side-row"><span>'+a+'</span><span>'+b+'</span></div>').join('')}
+function renderSideModel(active){const el=$('#side-model-info');if(!active||!active.params){el.innerHTML='<div style="font-size:12px;color:var(--text-muted)">等待训练任务...</div>';return}const p=active.progress||{},pct=Math.max(0,Math.min(100,Number(p.percent)||0)),stage=active.stage||p.phase||active.phase,steps={preprocessing:['2','数据预处理'],extracting:['3','特征提取'],training:['4','模型训练'],indexing:['4','生成索引'],validating:['4','验证推理'],uploading:['4','上传模型']},info=steps[stage]||['-',active.phase],isTrain=stage==='training'||stage==='indexing'||stage==='validating'||stage==='uploading';let rows=[['当前阶段','步骤 '+info[0]+' · '+info[1]]];if(isTrain){rows.push(['训练轮次',`${p.epoch||0} / ${p.total_epochs||0}`]);if(p.best_epoch!=null)rows.push(['最佳轮次',p.best_epoch]);if(p.best_loss!=null)rows.push(['最佳损失',Number(p.best_loss).toFixed(4)]);rows.push(['生成器损失',`G ${Number(p.loss_g||0).toFixed(4)}`]);rows.push(['判别器损失',`D ${Number(p.loss_d||0).toFixed(4)}`]);if(p.eta_seconds!=null)rows.push(['剩余时间',fmt(p.eta_seconds)])}else{rows.push(['完成度',pct.toFixed(1)+'%'])}rows.push(['已用时间',fmt(p.elapsed_seconds)]);el.innerHTML='<div class="side-row" style="margin-bottom:8px"><span>模型名称</span><span style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(active.params.model_name||'')+'">'+(active.params.model_name||'')+'</span></div><div class="progress-bar" style="margin:6px 0 10px"><div class="progress-fill" style="width:'+pct+'%"></div></div>'+rows.map(([a,b])=>'<div class="side-row"><span>'+a+'</span><span>'+b+'</span></div>').join('')}
 
 function renderSideDownloads(completed){const el=$('#side-downloads');if(!completed.length){el.innerHTML='<div style="font-size:12px;color:var(--text-muted)">暂无可下载文件</div>';return}const model=completed[0];const name=model.params?.model_name||'';el.innerHTML='<div class="dl-grid"><div class="dl-card"><div class="dl-icon">📦</div><div class="dl-name">.pth</div><div class="dl-meta">模型权重</div><a class="dl-btn" href="/api/v1/models/'+encodeURIComponent(name)+'/files/pth" download>下载</a></div><div class="dl-card"><div class="dl-icon">🔍</div><div class="dl-name">.index</div><div class="dl-meta">特征索引</div><a class="dl-btn" href="/api/v1/models/'+encodeURIComponent(name)+'/files/index" download>下载</a></div></div>'}
 
@@ -560,10 +565,11 @@ async function poll(){clearTimeout(state.timer);try{const headers={};if(state.et
 
 async function loadOptions(){try{const d=await(await api('/api/v1/options')).json();const dd=$('#dataset-options');dd.innerHTML='';if(d.datasets&&d.datasets.length){d.datasets.forEach(name=>{const opt=document.createElement('div');opt.className='sel-opt';opt.dataset.value=name;opt.onclick=function(){selPick(this,'existing-dataset')};opt.innerHTML='<span class="oi">🎵</span><span class="ol">'+name+'</span><span class="oc">✓</span>';dd.append(opt)});const sep=document.createElement('div');sep.className='sel-sep';dd.append(sep)}else{const opt=document.createElement('div');opt.className='sel-opt';opt.innerHTML='<span class="ol" style="color:var(--text-muted)">暂无数据集</span>';dd.append(opt)}const placeholder=document.createElement('div');placeholder.className='sel-opt';placeholder.innerHTML='<span class="ol" style="color:var(--text-muted)">选择现有数据集...</span>';dd.append(placeholder);loadModels(d.models||[]);loadGpus(d.gpus||[])}catch(err){text($('#gpu-info'),'GPU 状态不可用');notice(err.message)}}
 
-function loadModels(models){['extract-model','train-model'].forEach(fieldId=>{const dd=$('#'+fieldId+'-options');if(!dd)return;const selected=state.selectedValues[fieldId],choices=[...new Set([...models,selected].filter(Boolean))];dd.innerHTML='';if(!choices.length){dd.innerHTML='<div class="sel-opt"><span class="ol" style="color:var(--text-muted)">暂无可用模型，请先完成预处理</span></div>';return}choices.forEach(name=>{const opt=document.createElement('div');opt.className='sel-opt'+(name===selected?' selected':'');opt.dataset.value=name;opt.onclick=function(){selPick(this,fieldId)};opt.innerHTML='<span class="oi">🧩</span><span class="ol">'+name+'</span><span class="oc">✓</span>';dd.append(opt)});if(selected)selectModel(fieldId,selected)})}
+function loadModels(models){const dd=$('#model-options');if(!dd)return;const selected=state.selectedValues['model'],choices=[...new Set([...models,selected].filter(Boolean))];dd.innerHTML='';if(!choices.length){dd.innerHTML='<div class="sel-opt"><span class="ol" style="color:var(--text-muted)">暂无可用模型，请先完成预处理</span></div>';return}choices.forEach(name=>{const opt=document.createElement('div');opt.className='sel-opt'+(name===selected?' selected':'');opt.dataset.value=name;opt.onclick=function(){selPick(this,'model')};opt.innerHTML='<span class="oi">🧩</span><span class="ol">'+name+'</span><span class="oc">✓</span>';dd.append(opt)});if(selected)selectModel('model',selected)}
 function selectModel(fieldId,name){state.selectedValues[fieldId]=name;const dd=$('#'+fieldId+'-options');if(!dd)return;const opt=[...dd.querySelectorAll('.sel-opt')].find(item=>item.dataset.value===name);if(opt)selPick(opt,fieldId)}
 
-function loadGpus(gpus){state.gpus=gpus;const badge=$('#gpu-info');text(badge,gpus.length?gpus.map(g=>'GPU '+g.id+': '+g.name).join(' · '):'未检测到 GPU');if(gpus.length)badge.title=gpus.map(g=>'GPU '+g.id+': '+g.name+' ('+Math.round(g.memory_mb)+' MB)').join('\n');['extraction-gpu-options','training-gpu-options'].forEach(id=>{const dd=$('#'+id);if(!dd)return;dd.innerHTML='';dd.closest('.sel').classList.add('multi');if(!gpus.length){dd.innerHTML='<div class="sel-opt"><span class="ol" style="color:var(--text-muted)">未检测到 GPU</span></div>';return}gpus.forEach(g=>{const opt=document.createElement('div');opt.className='sel-opt selected';opt.dataset.value=String(g.id);opt.onclick=function(){selMulti(this)};opt.innerHTML='<span class="oi">⚡</span><span class="ol">GPU '+g.id+' — '+g.name+'</span><span class="oc" style="font-size:10px;color:var(--text-muted)">'+Math.round(g.memory_mb)+' MB</span>';dd.append(opt)});const btn=dd.closest('.sel').querySelector('.sel-btn');btn.querySelector('.st').textContent=gpus.map(g=>'GPU '+g.id).join(', ');const hidden=dd.closest('.field').querySelector('input[type=hidden]');if(hidden)hidden.value=gpus.map(g=>String(g.id)).join(',')})}
+function loadGpus(gpus){state.gpus=gpus;const badge=$('#gpu-info');text(badge,gpus.length?gpus.map(g=>'GPU '+g.id+': '+g.name).join(' · '):'未检测到 GPU');if(gpus.length)badge.title=gpus.map(g=>'GPU '+g.id+': '+g.name+' ('+Math.round(g.memory_mb)+' MB)').join('
+');['training-gpu-options'].forEach(id=>{const dd=$('#'+id);if(!dd)return;dd.innerHTML='';dd.closest('.sel').classList.add('multi');if(!gpus.length){dd.innerHTML='<div class="sel-opt"><span class="ol" style="color:var(--text-muted)">未检测到 GPU</span></div>';return}gpus.forEach(g=>{const opt=document.createElement('div');opt.className='sel-opt selected';opt.dataset.value=String(g.id);opt.onclick=function(){selMulti(this)};opt.innerHTML='<span class="oi">⚡</span><span class="ol">GPU '+g.id+' — '+g.name+'</span><span class="oc" style="font-size:10px;color:var(--text-muted)">'+Math.round(g.memory_mb)+' MB</span>';dd.append(opt)});const btn=dd.closest('.sel').querySelector('.sel-btn');btn.querySelector('.st').textContent=gpus.map(g=>'GPU '+g.id).join(', ');const hidden=dd.closest('.field').querySelector('input[type=hidden]');if(hidden)hidden.value=gpus.map(g=>String(g.id)).join(',')})}
 
 function setResumeControl(d){state.resumeDataset=d.resume_dataset||null;const btn=$('#resume-history');btn.disabled=!(d.configured&&state.resumeDataset);btn.title=btn.disabled?'配置 RVC_RESUME_DATASET 并验证 Token 后可用':'下载并启用训练历史'}
 async function openKaggleSettings(){const d=await(await api('/api/v1/kaggle-auth')).json();state.kaggleConfigured=!!d.configured;$('#kaggle-token').value='';text($('#kaggle-error'),'');if(d.configured){text($('#kaggle-title'),'Kaggle Access Token 已配置');text($('#kaggle-copy'),'当前 owner：'+(d.owner||'已验证')+'。Token 不会显示；仅在输入新 Token 后才会更改。');$('#kaggle-token').placeholder='留空则保持当前 Token';text($('#kaggle-warning'),'保持不变可继续使用私有模型持久化和手动恢复训练历史。');text($('#skip-kaggle'),'保持不变');text($('#kaggle-submit'),'更改 Token')}else{text($('#kaggle-title'),'Kaggle Access Token');text($('#kaggle-copy'),'输入新版 Kaggle API Token，用于私有模型持久化和跨 Session 续训。Token 仅保留在当前服务进程中。');$('#kaggle-token').placeholder='可留空';text($('#kaggle-warning'),'不输入仍可训练和浏览器下载，但不能上传私有模型、保存跨 Session checkpoint 或恢复私有 Dataset。');text($('#skip-kaggle'),'暂不配置');text($('#kaggle-submit'),'验证并启用')}$('#kaggle-setup').classList.remove('hidden')}

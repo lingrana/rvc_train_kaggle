@@ -412,6 +412,23 @@ async def upload_direct(upload_id: str, request: Request) -> dict[str, Any]:
             raise
 
 
+@app.post("/api/v1/uploads/direct/{upload_id}/progress")
+async def upload_progress(upload_id: str, request: Request) -> dict[str, Any]:
+    """Accept client-reported byte progress so notebooks can track uploads
+    even when a reverse proxy buffers the entire request body."""
+    directory = _upload_path(upload_id)
+    with directory_lock(UPLOADS_DIR / f".{upload_id}.lock", timeout=5):
+        manifest = _manifest(upload_id)
+        if manifest.get("status") != "uploading":
+            return manifest
+        body = await request.json()
+        reported = min(int(body.get("received", 0)), int(manifest["size"]))
+        if reported > int(manifest.get("received", 0)):
+            manifest.update(received=reported, updated_at=time.time())
+            atomic_json_dump(manifest, directory / "manifest.json")
+    return manifest
+
+
 @app.post("/api/v1/jobs/{kind}")
 async def submit_job(kind: str, request: Request, response: Response) -> dict[str, Any]:
     body = await request.json()
