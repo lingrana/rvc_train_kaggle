@@ -127,12 +127,17 @@ class ControlApiTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("KAGGLE_API_TOKEN", os.environ)
 
     async def test_auth_etag_and_resumable_upload(self) -> None:
+        session = await self.client.get("/api/v1/session")
+        self.assertEqual(session.status_code, 200)
+        self.assertFalse(session.json()["authenticated"])
+        self.assertEqual((await self.client.get("/favicon.ico")).status_code, 204)
         self.assertEqual((await self.client.get("/api/v1/jobs")).status_code, 401)
         login = await self.client.post(
             "/api/v1/auth/login",
             json={"username": _TEST_USER, "password": _TEST_PASSWORD},
         )
         self.assertEqual(login.status_code, 200)
+        self.assertTrue((await self.client.get("/api/v1/session")).json()["authenticated"])
 
         jobs = await self.client.get("/api/v1/jobs")
         self.assertEqual(jobs.status_code, 200)

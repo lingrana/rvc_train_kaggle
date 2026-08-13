@@ -561,5 +561,5 @@ $('#kaggle-settings').onclick=()=>{$('#kaggle-token').value='';text($('#kaggle-e
 $('#resume-history').onclick=async()=>{if(!state.resumeDataset)return;try{const d=await(await api('/api/v1/resume',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataset:state.resumeDataset})})).json();notice('训练历史已准备：'+d.dataset+'。请使用相同模型名开始训练。')}catch(err){notice(err.message)}};
 $('#logout').onclick=async()=>{await fetch('/api/v1/auth/logout',{method:'POST'});$('#login').classList.remove('hidden')};
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll()});
-fetch('/api/v1/session').then(r=>{if(r.ok){$('#login').classList.add('hidden');startConsole()}});
+fetch('/api/v1/session').then(async r=>{if(!r.ok)return;const d=await r.json();if(d.authenticated){$('#login').classList.add('hidden');startConsole()}});
 </script></body></html>'''

@@ -75,7 +75,13 @@ def _authenticated(request: Request) -> bool:
 
 @app.middleware("http")
 async def authentication(request: Request, call_next):
-    public = request.url.path in {"/", "/api/v1/auth/login", "/healthz"}
+    public = request.url.path in {
+        "/",
+        "/favicon.ico",
+        "/api/v1/auth/login",
+        "/api/v1/session",
+        "/healthz",
+    }
     if not public and not _authenticated(request):
         return Response('{"detail":"Not authenticated"}', status_code=401, media_type="application/json")
     response = await call_next(request)
@@ -94,6 +100,11 @@ def index() -> str:
 @app.get("/healthz")
 def health() -> dict[str, bool]:
     return {"ok": True}
+
+
+@app.get("/favicon.ico", status_code=204)
+def favicon() -> Response:
+    return Response(status_code=204)
 
 
 @app.post("/api/v1/auth/login")
@@ -136,8 +147,8 @@ def logout(response: Response) -> dict[str, bool]:
 
 
 @app.get("/api/v1/session")
-def session() -> dict[str, bool]:
-    return {"authenticated": True}
+def session(request: Request) -> dict[str, bool]:
+    return {"authenticated": _authenticated(request)}
 
 
 @app.get("/api/v1/kaggle-auth")
