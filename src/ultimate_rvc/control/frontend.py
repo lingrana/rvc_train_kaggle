@@ -4,8 +4,8 @@ HTML = r'''<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>RVC Training Console</title>
 <style>
-:root{--bg:#fafbfc;--card:#fff;--card-hover:#f8f9fa;--border:#e8ecef;--border-light:#f0f2f5;--text:#1a1a2e;--text-dim:#5a6072;--text-muted:#9ca3b0;--accent:#0066ff;--accent2:#6366f1;--accent3:#0ea5e9;--green:#10b981;--green-dim:rgba(16,185,129,.08);--red:#ef4444;--red-dim:rgba(239,68,68,.08);--orange:#f59e0b;--purple:#8b5cf6}
-body.dark{--bg:#0a0a0f;--card:#12121a;--card-hover:#1a1a25;--border:#1e1e2a;--border-light:#2a2a3a;--text:#e8e8ed;--text-dim:#9ca3b0;--text-muted:#6b7280;--accent:#4d8eff;--accent2:#818cf8;--accent3:#38bdf8;--green:#34d399;--green-dim:rgba(52,211,153,.1);--red:#f87171;--red-dim:rgba(248,113,113,.1);--orange:#fbbf24;--purple:#a78bfa}
+:root{--bg:#fafbfc;--card:#fff;--card-hover:#f8f9fa;--border:#e8ecef;--border-light:#f0f2f5;--text:#1a1a2e;--text-dim:#5a6072;--text-muted:#9ca3b0;--accent:#0066ff;--accent2:#6366f1;--accent3:#0ea5e9;--green:#10b981;--green-dim:rgba(16,185,129,.08);--red:#ef4444;--red-dim:rgba(239,68,68,.08);--orange:#f59e0b;--purple:#8b5cf6;--hover:#f0f2f5}
+body.dark{--bg:#0a0a0f;--card:#12121a;--card-hover:#1a1a25;--border:#1e1e2a;--border-light:#2a2a3a;--text:#e8e8ed;--text-dim:#9ca3b0;--text-muted:#6b7280;--accent:#4d8eff;--accent2:#818cf8;--accent3:#38bdf8;--green:#34d399;--green-dim:rgba(52,211,153,.1);--red:#f87171;--red-dim:rgba(248,113,113,.1);--orange:#fbbf24;--purple:#a78bfa;--hover:#1a1a25}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Noto Sans SC',Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
 button,input,select{font:inherit;letter-spacing:0}
