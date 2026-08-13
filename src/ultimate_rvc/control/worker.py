@@ -26,7 +26,15 @@ from ultimate_rvc.typing_extra import (
 
 
 def preprocess(params: dict[str, Any]) -> None:
+    from ultimate_rvc.common import TRAINING_MODELS_DIR
     from ultimate_rvc.core.train.prepare import preprocess_dataset
+    from ultimate_rvc.rvc.train.progress import update_progress
+
+    model_dir = TRAINING_MODELS_DIR / params["model_name"]
+    model_dir.mkdir(parents=True, exist_ok=True)
+    update_progress(
+        model_dir, phase="preprocessing", percent=0, stage_detail="正在准备音频", done=False,
+    )
 
     preprocess_dataset(
         params["model_name"], params["dataset"],
@@ -38,10 +46,20 @@ def preprocess(params: dict[str, Any]) -> None:
         float(params.get("chunk_len", 3.0)), float(params.get("overlap_len", 0.3)),
         int(params.get("preprocess_cores", params.get("cpu_cores", 2))),
     )
+    update_progress(
+        model_dir, phase="preprocessing", percent=100, stage_detail="预处理完成", done=False,
+    )
 
 
 def extract(params: dict[str, Any]) -> None:
+    from ultimate_rvc.common import TRAINING_MODELS_DIR
     from ultimate_rvc.core.train.extract import extract_features
+    from ultimate_rvc.rvc.train.progress import update_progress
+
+    model_dir = TRAINING_MODELS_DIR / params["model_name"]
+    update_progress(
+        model_dir, phase="extracting", percent=0, stage_detail="正在准备特征提取", done=False,
+    )
 
     extract_features(
         params["model_name"], F0Method(params.get("f0_method", "rmvpe")),
@@ -51,6 +69,9 @@ def extract(params: dict[str, Any]) -> None:
         int(params.get("extraction_cores", params.get("cpu_cores", 2))),
         DeviceType(params.get("extraction_device", params.get("device", "Automatic"))),
         set(params.get("extraction_gpu_ids", params.get("gpu_ids", []))) or None,
+    )
+    update_progress(
+        model_dir, phase="extracting", percent=100, stage_detail="特征提取完成", done=False,
     )
 
 

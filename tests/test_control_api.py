@@ -126,7 +126,7 @@ class ControlApiTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(token, response.text)
         self.assertNotIn("KAGGLE_API_TOKEN", os.environ)
 
-    async def test_auth_etag_and_resumable_upload(self) -> None:
+    async def test_auth_etag_and_direct_upload(self) -> None:
         session = await self.client.get("/api/v1/session")
         self.assertEqual(session.status_code, 200)
         self.assertFalse(session.json()["authenticated"])
@@ -148,28 +148,28 @@ class ControlApiTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cached.status_code, 304)
 
         content = b"RIFF" + b"audio" * 300
-        digest = hashlib.sha256(content).hexdigest()
         begin = await self.client.post(
-            "/api/v1/uploads",
+            "/api/v1/uploads/direct",
             json={
                 "dataset": "DemoSet",
                 "filename": "demo.wav",
                 "size": len(content),
-                "sha256": digest,
             },
         )
         self.assertEqual(begin.status_code, 201)
         upload_id = begin.json()["id"]
-        part = await self.client.put(
-            f"/api/v1/uploads/{upload_id}/parts/0",
+        self.assertEqual(begin.json()["received"], 0)
+        self.assertEqual(begin.json()["status"], "uploading")
+        uploaded = await self.client.put(
+            f"/api/v1/uploads/direct/{upload_id}",
             content=content,
-            headers={"X-Part-SHA256": digest},
         )
-        self.assertEqual(part.status_code, 200)
+        self.assertEqual(uploaded.status_code, 200)
+        self.assertEqual(uploaded.json()["sha256"], hashlib.sha256(content).hexdigest())
         status = await self.client.get(f"/api/v1/uploads/{upload_id}")
-        self.assertEqual(status.json()["completed_parts"], [0])
-        complete = await self.client.post(f"/api/v1/uploads/{upload_id}/complete")
-        self.assertEqual(complete.status_code, 200)
+        self.assertEqual(status.json()["received"], len(content))
+        self.assertEqual(status.json()["status"], "completed")
+        self.assertFalse((control_app.UPLOADS_DIR / upload_id / "parts").exists())
         destination = control_app.TRAINING_AUDIO_DIR / "DemoSet" / "demo.wav"
         self.assertEqual(destination.read_bytes(), content)
 
@@ -179,7 +179,7 @@ class ControlApiTest(unittest.IsolatedAsyncioTestCase):
             json={"username": _TEST_USER, "password": _TEST_PASSWORD},
         )
         response = await self.client.post(
-            "/api/v1/uploads",
+            "/api/v1/uploads/direct",
             json={
                 "dataset": "DemoSet",
                 "filename": "too-large.wav",

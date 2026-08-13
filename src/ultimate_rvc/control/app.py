@@ -27,13 +27,12 @@ from ultimate_rvc.control.jobs import (
     read_job,
     stop_job,
 )
-from ultimate_rvc.rvc.train.delivery import delivery_files, validate_model_name
+from ultimate_rvc.rvc.train.delivery import atomic_json_dump, delivery_files, validate_model_name
 from ultimate_rvc.rvc.train.progress import read_progress
 from ultimate_rvc.security import directory_lock
 
 COOKIE_NAME = "rvc-control-session"
 COOKIE_TTL = 24 * 60 * 60
-PART_SIZE = 8 * 1024 * 1024
 MAX_UPLOAD_SIZE = 2 * 1024**3
 MAX_OPEN_UPLOADS = 4
 UPLOAD_TTL = 24 * 60 * 60
@@ -234,7 +233,12 @@ def options() -> dict[str, Any]:
     if TRAINING_AUDIO_DIR.is_dir():
         datasets = sorted(path.name for path in TRAINING_AUDIO_DIR.iterdir() if path.is_dir())
     gpus = _detect_gpus()
-    return {"datasets": datasets, "part_size": PART_SIZE, "gpus": gpus}
+    models = []
+    if TRAINING_MODELS_DIR.is_dir():
+        models = sorted(
+            path.name for path in TRAINING_MODELS_DIR.iterdir() if path.is_dir()
+        )
+    return {"datasets": datasets, "models": models, "gpus": gpus}
 
 
 def _detect_gpus() -> list[dict[str, Any]]:
@@ -317,39 +321,8 @@ def _cleanup_uploads() -> int:
 
 
 @app.post("/api/v1/uploads/direct", status_code=201)
-async def upload_audio_file(request: Request) -> dict[str, Any]:
-    content_type = request.headers.get("content-type", "")
-    if "multipart/form-data" not in content_type:
-        raise HTTPException(400, "需要 multipart/form-data")
-    form = await request.form()
-    dataset_name = form.get("dataset", "")
-    audio_file = form.get("file")
-    if not audio_file or not hasattr(audio_file, "read"):
-        raise HTTPException(400, "缺少文件")
-    try:
-        dataset_name = validate_model_name(str(dataset_name))
-    except ValueError as error:
-        raise HTTPException(400, str(error)) from error
-    filename = Path(getattr(audio_file, "filename", "")).name
-    if not filename or Path(filename).suffix.lower() not in {".wav", ".flac", ".mp3", ".ogg", ".m4a", ".aac"}:
-        raise HTTPException(400, "文件名无效或格式不支持")
-    data = await audio_file.read()
-    size = len(data)
-    if size <= 0 or size > MAX_UPLOAD_SIZE:
-        raise HTTPException(400, "文件大小无效")
-    free = shutil.disk_usage(UPLOADS_DIR.parent).free
-    if free < size:
-        raise HTTPException(507, "磁盘剩余空间不足")
-    dataset_dir = TRAINING_AUDIO_DIR / dataset_name
-    dataset_dir.mkdir(parents=True, exist_ok=True)
-    destination = dataset_dir / filename
-    digest = hashlib.sha256(data)
-    destination.write_bytes(data)
-    return {"dataset": dataset_name, "filename": filename, "size": size, "sha256": digest.hexdigest()}
-
-
-@app.post("/api/v1/uploads", status_code=201)
-async def begin_upload(request: Request) -> dict[str, Any]:
+async def begin_direct_upload(request: Request) -> dict[str, Any]:
+    """Create a tracked single-request upload; no file chunking is used."""
     _cleanup_uploads()
     body = await request.json()
     try:
@@ -364,85 +337,79 @@ async def begin_upload(request: Request) -> dict[str, Any]:
         raise HTTPException(413, "上传文件超过 2 GiB 限制")
     with directory_lock(UPLOADS_DIR.parent / "uploads.lock", timeout=5):
         UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-        open_uploads = sum(
-            1
-            for path in UPLOADS_DIR.iterdir()
-            if path.is_dir() and not path.name.startswith(".")
-        )
+        open_uploads = 0
+        for path in UPLOADS_DIR.iterdir():
+            if not path.is_dir() or path.name.startswith("."):
+                continue
+            try:
+                if json.loads((path / "manifest.json").read_text("utf-8")).get("status") == "uploading":
+                    open_uploads += 1
+            except (OSError, ValueError, TypeError):
+                continue
         if open_uploads >= MAX_OPEN_UPLOADS:
             raise HTTPException(429, "未完成上传任务过多")
         free = shutil.disk_usage(UPLOADS_DIR.parent).free
-        if free < size + PART_SIZE:
+        if free < size:
             raise HTTPException(507, "磁盘剩余空间不足")
         upload_id = str(uuid.uuid4())
         directory = _upload_path(upload_id)
-        (directory / "parts").mkdir(parents=True)
-        manifest = {"id": upload_id, "dataset": dataset, "filename": filename, "size": size, "part_size": PART_SIZE, "sha256": str(body.get("sha256", "")), "created_at": time.time()}
-        from ultimate_rvc.rvc.train.delivery import atomic_json_dump
+        directory.mkdir(parents=True)
+        manifest = {
+            "id": upload_id,
+            "dataset": dataset,
+            "filename": filename,
+            "size": size,
+            "received": 0,
+            "status": "uploading",
+            "created_at": time.time(),
+            "updated_at": time.time(),
+        }
         atomic_json_dump(manifest, directory / "manifest.json")
-    return {**manifest, "completed_parts": []}
+    return manifest
 
 
 @app.get("/api/v1/uploads/{upload_id}")
 def upload_status(upload_id: str) -> dict[str, Any]:
     manifest = _manifest(upload_id)
     _upload_path(upload_id).touch()
-    parts = sorted(int(path.name) for path in (_upload_path(upload_id) / "parts").iterdir() if path.name.isdigit())
-    return {**manifest, "completed_parts": parts}
+    return manifest
 
 
-@app.put("/api/v1/uploads/{upload_id}/parts/{number}")
-async def upload_part(upload_id: str, number: int, request: Request) -> dict[str, Any]:
-    manifest = _manifest(upload_id)
-    total_parts = (int(manifest["size"]) + PART_SIZE - 1) // PART_SIZE
-    if number < 0 or number >= total_parts:
-        raise HTTPException(400, "分片编号超出范围")
-    expected = min(PART_SIZE, int(manifest["size"]) - number * PART_SIZE)
-    data = await request.body()
-    if len(data) != expected:
-        raise HTTPException(400, f"分片大小错误，应为 {expected} 字节")
-    digest = hashlib.sha256(data).hexdigest()
-    supplied = request.headers.get("X-Part-SHA256", "")
-    if supplied and not hmac.compare_digest(digest, supplied.lower()):
-        raise HTTPException(400, "分片 SHA-256 校验失败")
+@app.put("/api/v1/uploads/direct/{upload_id}")
+async def upload_direct(upload_id: str, request: Request) -> dict[str, Any]:
+    """Stream one whole file to disk while publishing byte-level progress."""
     directory = _upload_path(upload_id)
-    destination = directory / "parts" / str(number)
-    with directory_lock(UPLOADS_DIR / f".{upload_id}.lock", timeout=10):
-        temporary = destination.with_suffix(f".{uuid.uuid4().hex}.tmp")
-        try:
-            temporary.write_bytes(data)
-            Path(temporary).replace(destination)
-            directory.touch()
-        finally:
-            temporary.unlink(missing_ok=True)
-    return {"number": number, "sha256": digest}
-
-
-@app.post("/api/v1/uploads/{upload_id}/complete")
-def complete_upload(upload_id: str) -> dict[str, str]:
+    temporary = directory / ".uploading"
     with directory_lock(UPLOADS_DIR / f".{upload_id}.lock", timeout=10):
         manifest = _manifest(upload_id)
-        directory = _upload_path(upload_id)
-        total_parts = (int(manifest["size"]) + PART_SIZE - 1) // PART_SIZE
-        missing = [number for number in range(total_parts) if not (directory / "parts" / str(number)).is_file()]
-        if missing:
-            raise HTTPException(409, {"missing_parts": missing})
-        dataset_dir = TRAINING_AUDIO_DIR / manifest["dataset"]
-        dataset_dir.mkdir(parents=True, exist_ok=True)
-        destination = dataset_dir / manifest["filename"]
-        temporary = destination.with_suffix(destination.suffix + ".upload")
+        if manifest.get("status") != "uploading":
+            raise HTTPException(409, "上传任务已结束")
+        received = 0
         digest = hashlib.sha256()
-        with temporary.open("wb") as output:
-            for number in range(total_parts):
-                data = (directory / "parts" / str(number)).read_bytes()
-                output.write(data)
-                digest.update(data)
-        if temporary.stat().st_size != int(manifest["size"]) or (manifest.get("sha256") and digest.hexdigest() != manifest["sha256"]):
+        try:
+            with temporary.open("wb") as output:
+                async for data in request.stream():
+                    received += len(data)
+                    if received > int(manifest["size"]):
+                        raise HTTPException(400, "上传文件超过声明大小")
+                    output.write(data)
+                    digest.update(data)
+                    manifest.update(received=received, updated_at=time.time())
+                    atomic_json_dump(manifest, directory / "manifest.json")
+            if received != int(manifest["size"]):
+                raise HTTPException(400, "上传文件大小不匹配")
+            dataset_dir = TRAINING_AUDIO_DIR / manifest["dataset"]
+            dataset_dir.mkdir(parents=True, exist_ok=True)
+            destination = dataset_dir / manifest["filename"]
+            os.replace(temporary, destination)
+            manifest.update(received=received, status="completed", updated_at=time.time())
+            atomic_json_dump(manifest, directory / "manifest.json")
+            return {"dataset": str(dataset_dir), "filename": destination.name, "sha256": digest.hexdigest()}
+        except Exception:
+            manifest.update(status="failed", updated_at=time.time())
+            atomic_json_dump(manifest, directory / "manifest.json")
             temporary.unlink(missing_ok=True)
-            raise HTTPException(400, "完整文件校验失败")
-        Path(temporary).replace(destination)
-        shutil.rmtree(directory)
-    return {"dataset": str(dataset_dir), "filename": destination.name, "sha256": digest.hexdigest()}
+            raise
 
 
 @app.post("/api/v1/jobs/{kind}")
