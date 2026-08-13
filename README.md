@@ -26,11 +26,10 @@
 ### 快速开始
 
 1. 登录 Kaggle，创建 Notebook
-2. 在 Kaggle Secret 中设置 `RVC_REPO_COMMIT` 为已审查发布提交的完整 40 位哈希
-3. 上传并打开仓库中的 `rvc_train.ipynb`
-4. 设置任一 GPU（推荐 T4 x2）并开启 Internet
-5. 按顺序运行所有 Cell
-6. 使用输出的 Cloudflare 地址、用户名和密码登录
+2. 上传并打开仓库中的 `rvc_train.ipynb`
+3. 设置任一 GPU（推荐 T4 x2）并开启 Internet
+4. 按顺序运行所有 Cell
+5. 使用输出的 Cloudflare 地址、用户名和密码登录
 
 ## 推荐训练参数
 
@@ -52,7 +51,6 @@
 | `URVC_MODELS_DIR` | 模型存储目录 | `./models` |
 | `URVC_CONFIG` | 加载的配置名称 | 默认配置 |
 | `RVC_WEB_PASSWORD` | WebUI 登录密码（Kaggle Secret） | 随机生成 |
-| `RVC_REPO_COMMIT` | 允许 Notebook detached checkout 的已审查提交（40 位） | 必填 |
 | `KAGGLE_USERNAME` | 私有 Dataset 上传账号（Kaggle Secret） | 无 |
 | `KAGGLE_KEY` | 私有 Dataset API Key（Kaggle Secret） | 无 |
 | `RVC_RESUME_DATASET` | 要恢复的私有状态数据集，如 `user/rvc-name-resume` | 无 |
