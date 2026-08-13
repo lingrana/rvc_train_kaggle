@@ -140,34 +140,53 @@ def main() -> None:
     # wait_for_server(7861, "RVC Gradio fallback")
 
     cloudflared = ROOT / "cloudflared-linux-amd64"
-    tunnel = subprocess.Popen(
-        [str(cloudflared), "tunnel", "--url", "http://127.0.0.1:7860"],
-        cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-    processes.append(tunnel)
-    lines: list[str] = []
-    threading.Thread(target=stream, args=(tunnel, lines), daemon=True).start()
-    url = None
-    for _ in range(60):
-        url_match = re.search(r"https://[\w.-]+\.trycloudflare\.com", "\n".join(lines[-30:]))
-        if url_match:
-            url = url_match.group(0)
-            break
-        if tunnel.poll() is not None:
-            break
-        time.sleep(1)
-    if not url:
-        raise RuntimeError("Cloudflare tunnel failed to provide a URL")
-    print("\n" + "=" * 60)
-    print(f"训练控制台: {url}")
-    print(f"用户名: {username}")
-    print(f"密码: {password}")
-    # print("Gradio 备用界面仅监听本机: http://127.0.0.1:7861")  # 已禁用 Gradio
-    print("=" * 60 + "\n")
+    if not cloudflared.exists():
+        print("[RVC] 下载 cloudflared...", flush=True)
+        import urllib.request
+        url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+        try:
+            urllib.request.urlretrieve(url, str(cloudflared))
+            cloudflared.chmod(0o755)
+            print("[RVC] cloudflared 下载完成", flush=True)
+        except Exception as e:
+            print(f"[RVC] cloudflared 下载失败: {e}", flush=True)
+            print("[RVC] 跳过隧道，直接访问 http://127.0.0.1:7860", flush=True)
+            cloudflared = None
+
+    if cloudflared and cloudflared.exists():
+        tunnel = subprocess.Popen(
+            [str(cloudflared), "tunnel", "--url", "http://127.0.0.1:7860"],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        processes.append(tunnel)
+        lines: list[str] = []
+        threading.Thread(target=stream, args=(tunnel, lines), daemon=True).start()
+        url = None
+        for _ in range(60):
+            url_match = re.search(r"https://[\w.-]+\.trycloudflare\.com", "\n".join(lines[-30:]))
+            if url_match:
+                url = url_match.group(0)
+                break
+            if tunnel.poll() is not None:
+                break
+            time.sleep(1)
+        if not url:
+            raise RuntimeError("Cloudflare tunnel failed to provide a URL")
+        print("\n" + "=" * 60)
+        print(f"训练控制台: {url}")
+        print(f"用户名: {username}")
+        print(f"密码: {password}")
+        print("=" * 60 + "\n")
+    else:
+        print("\n" + "=" * 60)
+        print(f"训练控制台: http://127.0.0.1:7860")
+        print(f"用户名: {username}")
+        print(f"密码: {password}")
+        print("=" * 60 + "\n")
     while not shutting_down:
         exit_code = control.wait()
         if shutting_down:
