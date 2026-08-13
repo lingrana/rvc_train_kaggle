@@ -89,6 +89,90 @@ def get_audio_datasets() -> list[str]:
     return get_items(TRAINING_AUDIO_DIR, only_stem=False)
 
 
+def get_audio_datasets_with_info() -> list[tuple[str, str, int]]:
+    """
+    Get dataset info including name, path, and file count.
+
+    Returns
+    -------
+    list[tuple[str, str, int]]
+        A list of tuples containing (display_name, path, file_count).
+        display_name is formatted as "name (N files)" for the dropdown.
+
+    """
+    dir_path = Path(TRAINING_AUDIO_DIR)
+    if not dir_path.is_dir():
+        return []
+
+    datasets = []
+    for item in sorted(dir_path.iterdir()):
+        if item.is_dir():
+            audio_count = sum(
+                1 for f in item.iterdir()
+                if f.is_file() and f.suffix.lower() in {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac'}
+            )
+            display_name = f"{item.name} ({audio_count} 个文件)"
+            datasets.append((display_name, str(item), audio_count))
+
+    return datasets
+
+
+def get_dataset_files(dataset_path: str) -> list[tuple[str, str, int]]:
+    """
+    Get files in a dataset with their info.
+
+    Parameters
+    ----------
+    dataset_path : str
+        Path to the dataset directory.
+
+    Returns
+    -------
+    list[tuple[str, str, int]]
+        A list of tuples containing (filename, path, size_bytes).
+
+    """
+    dir_path = Path(dataset_path)
+    if not dir_path.is_dir():
+        return []
+
+    files = []
+    for item in sorted(dir_path.iterdir()):
+        if item.is_file() and item.suffix.lower() in {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac'}:
+            size = item.stat().st_size
+            files.append((item.name, str(item), size))
+
+    return files
+
+
+def get_audio_datasets_choices() -> list[tuple[str, str]]:
+    """
+    Get dataset choices for dropdown display.
+
+    Returns
+    -------
+    list[tuple[str, str]]
+        A list of tuples containing (display_name, path) for the dropdown.
+        display_name is formatted as "name (N files)" for friendly display.
+
+    """
+    dir_path = Path(TRAINING_AUDIO_DIR)
+    if not dir_path.is_dir():
+        return []
+
+    choices = []
+    for item in sorted(dir_path.iterdir()):
+        if item.is_dir():
+            audio_count = sum(
+                1 for f in item.iterdir()
+                if f.is_file() and f.suffix.lower() in {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac'}
+            )
+            display_name = f"{item.name} ({audio_count} 个文件)"
+            choices.append((display_name, str(item)))
+
+    return choices
+
+
 def delete_audio(
     directory: StrPath,
     items: Sequence[StrPath],

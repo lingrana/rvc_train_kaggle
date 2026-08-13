@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse
 import typer
 
 from ultimate_rvc.common import AUDIO_DIR, MODELS_DIR, TEMP_DIR, TRAINING_MODELS_DIR
-from ultimate_rvc.core.manage.audio import get_audio_datasets, get_named_audio_datasets
+from ultimate_rvc.core.manage.audio import get_audio_datasets, get_audio_datasets_choices, get_named_audio_datasets
 from ultimate_rvc.core.manage.config import get_config_names, load_config
 from ultimate_rvc.core.manage.models import (
     get_custom_embedder_model_names,
@@ -843,7 +843,8 @@ def _init_dropdowns() -> list[gr.Dropdown]:
         3,
         value_indices=range(2),
     )
-    dataset = gr.Dropdown(get_audio_datasets())
+    # 使用友好格式的下拉框，显示 "数据集名 (N 个文件)"
+    dataset = gr.Dropdown(get_audio_datasets_choices())
     return [
         *custom_embedder_models,
         *custom_pretrained_models,

@@ -14,7 +14,7 @@ from multiprocessing import cpu_count
 
 import gradio as gr
 
-from ultimate_rvc.core.manage.audio import get_audio_datasets, get_named_audio_datasets
+from ultimate_rvc.core.manage.audio import get_audio_datasets_choices, get_dataset_files
 from ultimate_rvc.core.manage.models import (
     get_training_model_names,
 )
@@ -217,6 +217,16 @@ def _render_step_1(total_config: TotalConfig) -> None:
         )
         upload_status = gr.Markdown(value="", visible=True)
 
+        dataset_files_html = gr.HTML(
+            value='<div style="padding:8px;color:#888;font-size:13px;">选择数据集后显示文件列表</div>',
+        )
+        audio_preview = gr.Audio(
+            label="音频预览",
+            type="filepath",
+            interactive=False,
+            visible=False,
+        )
+
         tab_config.dataset_type.instance.change(
             _toggle_dataset_input,
             inputs=tab_config.dataset_type.instance,
@@ -228,6 +238,13 @@ def _render_step_1(total_config: TotalConfig) -> None:
             show_progress="hidden",
         )
 
+        tab_config.dataset.instance.change(
+            _update_dataset_files_display,
+            inputs=tab_config.dataset.instance,
+            outputs=[dataset_files_html, audio_preview],
+            show_progress="hidden",
+        )
+
         audio_files.upload(
             exception_harness(
                 _upload_audio_files,
@@ -236,9 +253,14 @@ def _render_step_1(total_config: TotalConfig) -> None:
             inputs=[tab_config.dataset_name.instance, audio_files],
             outputs=[current_dataset, upload_status],
         ).then(
-            partial(update_dropdowns, get_audio_datasets, 1, value_indices=[0]),
+            partial(update_dropdowns, get_audio_datasets_choices, 1, value_indices=[0]),
             inputs=current_dataset,
             outputs=tab_config.dataset.instance,
+            show_progress="hidden",
+        ).then(
+            _update_dataset_files_display,
+            inputs=tab_config.dataset.instance,
+            outputs=[dataset_files_html, audio_preview],
             show_progress="hidden",
         )
         with gr.Row():
@@ -729,38 +751,40 @@ def _upload_audio_files(
     files: list,
 ) -> tuple:
     """Upload audio files and return status message."""
-    from ultimate_rvc.core.train.prepare import populate_dataset
-
     result = populate_dataset(dataset_name, files)
     file_count = len(files) if files else 0
     file_names = [f.split("/")[-1] if "/" in f else f.split("\\")[-1] for f in (files or [])]
     status = f"**已上传 {file_count} 个文件：**\n\n" + "\n".join(f"- {name}" for name in file_names[:10])
     if file_count > 10:
         status += f"\n- ... 还有 {file_count - 10} 个文件"
+
     return result, status
+
+
+def _update_dataset_files_display(dataset_path: str) -> tuple[str, gr.update]:
+    if not dataset_path:
+        return '<div style="padding:10px; color:#666;">选择数据集后显示文件列表</div>', gr.update(visible=False)
+
+    files = get_dataset_files(dataset_path)
+    if not files:
+        return '<div style="padding:10px; color:#666;">数据集为空</div>', gr.update(visible=False)
+
+    html_parts = ['<div style="padding:5px; background:#f9f9f9; border-radius:6px;"><b>文件列表：</b></div>']
+    for i, (name, path, size) in enumerate(files[:20]):
+        size_mb = size / (1024 * 1024)
+        html_parts.append(f'<div style="padding:2px 5px; font-size:12px; border-bottom:1px solid #eee;">{i+1}. {name} ({size_mb:.1f} MB)</div>')
+    if len(files) > 20:
+        html_parts.append(f'<div style="padding:2px 5px; font-size:12px; color:#999;">... 还有 {len(files)-20} 个文件</div>')
+
+    first_audio = files[0][1] if files else None
+    if first_audio:
+        return ''.join(html_parts), gr.update(value=first_audio, visible=True)
+    return ''.join(html_parts), gr.update(visible=False)
 
 
 def _toggle_dataset_input(
     dataset_type: DatasetType,
 ) -> tuple[gr.Textbox, gr.File, gr.Dropdown]:
-    """
-    Toggle the visibility of three different dataset input components
-    based on whether the selected dataset type indicates creating a new
-    dataset or using an existing one.
-
-    Parameters
-    ----------
-    dataset_type : DatasetType
-        The type of dataset to preprocess, indicating whether to create
-        a new dataset or use an existing dataset.
-
-    Returns
-    -------
-    tuple[gr.Textbox, gr.File, gr.Dropdown]
-        A tuple containing the three dataset input components with
-        updated visibility.
-
-    """
     is_new_dataset = dataset_type == DatasetType.NEW_DATASET
     return (
         gr.Textbox(
