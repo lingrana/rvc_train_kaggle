@@ -184,6 +184,7 @@ footer a:hover{color:var(--accent)}
     <button class="nav-btn" onclick="document.querySelector('[data-tab=models]').click()">模型下载</button>
     <button class="theme-btn" onclick="toggleTheme()" title="切换主题" id="theme-btn">☀️</button>
     <button class="sidebar-toggle" onclick="toggleSidebar()" title="切换侧栏">📊</button>
+    <button class="nav-btn" id="logout">退出</button>
   </div>
 </nav>
 
@@ -208,7 +209,7 @@ footer a:hover{color:var(--accent)}
             <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">📂</span><span class="st">新建数据集</span><span class="sa"></span></div>
               <div class="sel-dd"><div class="sel-opt selected" onclick="selPick(this,'dataset-type')" data-value="new"><span class="oi">🆕</span><span class="ol">新建数据集</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'dataset-type')" data-value="existing"><span class="oi">📂</span><span class="ol">现有数据集</span><span class="oc">✓</span></div></div></div>
           </div>
-          <div class="field" id="dataset-new-wrap"><div class="field-label">数据集名称</div><input class="field-input" id="dataset" value="MyDataset" pattern="[A-Za-z0-9_-]+"></div>
+          <div class="field" id="dataset-new-wrap"><div class="field-label">数据集名称</div><input class="field-input" id="dataset" value="MyDataset"></div>
           <div class="field" id="dataset-existing-wrap" style="display:none"><div class="field-label">选择数据集</div>
             <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">🎵</span><span class="st">暂无数据集</span><span class="sa"></span></div>
               <div class="sel-dd" id="dataset-options"></div></div>
