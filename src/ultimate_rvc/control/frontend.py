@@ -37,6 +37,8 @@ body.sidebar-hidden .main{max-width:800px;width:100%}
 .tab.active .tab-num{background:var(--text);color:#fff}
 .tab.done .tab-num{background:var(--green-dim);color:var(--green)}
 .tab.done .tab-num::after{content:'\2713'}
+.tab[data-step="1"] .tab-num::before{content:'1'}.tab[data-step="2"] .tab-num::before{content:'2'}.tab[data-step="3"] .tab-num::before{content:'3'}
+.tab.done .tab-num::before{content:none !important}
 .panel{display:none}
 .panel.active{display:block}
 .section{margin-bottom:24px}
