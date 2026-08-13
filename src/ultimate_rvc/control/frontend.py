@@ -189,6 +189,7 @@ footer a:hover{color:var(--accent)}
   </div>
   <div class="nav-right">
     <button class="nav-btn" id="kaggle-settings">Kaggle</button>
+    <button class="nav-btn" id="resume-history" disabled>恢复历史</button>
     <button class="nav-btn" onclick="document.querySelector('[data-tab=progress]').click()">训练进度</button>
     <button class="nav-btn" onclick="document.querySelector('[data-tab=models]').click()">模型下载</button>
     <button class="theme-btn" onclick="toggleTheme()" title="切换主题" id="theme-btn">☀️</button>
@@ -550,12 +551,14 @@ async function loadOptions(){try{const d=await(await api('/api/v1/options')).jso
 
 function loadGpus(gpus){state.gpus=gpus;['extraction-gpu-options','training-gpu-options'].forEach(id=>{const dd=$('#'+id);if(!dd)return;dd.innerHTML='';dd.closest('.sel').classList.add('multi');if(!gpus.length){dd.innerHTML='<div class="sel-opt"><span class="ol" style="color:var(--text-muted)">未检测到 GPU</span></div>';return}gpus.forEach(g=>{const opt=document.createElement('div');opt.className='sel-opt selected';opt.dataset.value=String(g.id);opt.onclick=function(){selMulti(this)};opt.innerHTML='<span class="oi">⚡</span><span class="ol">GPU '+g.id+' — '+g.name+'</span><span class="oc" style="font-size:10px;color:var(--text-muted)">'+Math.round(g.memory_mb)+' MB</span>';dd.append(opt)});const btn=dd.closest('.sel').querySelector('.sel-btn');btn.querySelector('.st').textContent=gpus.map(g=>'GPU '+g.id).join(', ');const hidden=dd.closest('.field').querySelector('input[type=hidden]');if(hidden)hidden.value=gpus.map(g=>String(g.id)).join(',')})}
 
-async function startConsole(){const d=await(await api('/api/v1/kaggle-auth')).json();if(d.setup_required){$('#kaggle-setup').classList.remove('hidden')}else if(d.configured){notice('Kaggle Token 已验证，Dataset owner: '+d.owner)}else if(d.warning||d.setup_required===false){notice('未配置 Kaggle Token：不能上传私有模型或恢复跨 Session 训练')}poll();loadOptions()}
-async function submitKaggleToken(token){const d=await(await api('/api/v1/kaggle-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})})).json();$('#kaggle-token').value='';$('#kaggle-setup').classList.add('hidden');text($('#kaggle-error'),'');if(d.warning)notice(d.warning);else if(d.configured)notice('Kaggle Token 已启用，Dataset owner: '+d.owner)}
+function setResumeControl(d){state.resumeDataset=d.resume_dataset||null;const btn=$('#resume-history');btn.disabled=!(d.configured&&state.resumeDataset);btn.title=btn.disabled?'配置 RVC_RESUME_DATASET 并验证 Token 后可用':'下载并启用训练历史'}
+async function startConsole(){const d=await(await api('/api/v1/kaggle-auth')).json();setResumeControl(d);if(d.setup_required){$('#kaggle-setup').classList.remove('hidden')}else if(d.configured){notice('Kaggle Token 已验证，Dataset owner: '+d.owner)}else if(d.warning||d.setup_required===false){notice('未配置 Kaggle Token：不能上传私有模型或恢复跨 Session 训练')}poll();loadOptions()}
+async function submitKaggleToken(token){const d=await(await api('/api/v1/kaggle-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})})).json();$('#kaggle-token').value='';$('#kaggle-setup').classList.add('hidden');text($('#kaggle-error'),'');setResumeControl(d);if(d.warning)notice(d.warning);else if(d.configured)notice(d.resume_dataset?'Kaggle Token 已启用；请手动点击“恢复历史”后再开始训练。':'Kaggle Token 已启用，Dataset owner: '+d.owner)}
 $('#login-form').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/v1/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('#user').value,password:$('#password').value})});$('#login').classList.add('hidden');text($('#login-error'),'');await startConsole()}catch(err){text($('#login-error'),err.message)}});
 $('#kaggle-form').addEventListener('submit',async e=>{e.preventDefault();try{await submitKaggleToken($('#kaggle-token').value)}catch(err){text($('#kaggle-error'),err.message)}});
 $('#skip-kaggle').onclick=async()=>{try{await submitKaggleToken('')}catch(err){text($('#kaggle-error'),err.message)}};
 $('#kaggle-settings').onclick=()=>{$('#kaggle-token').value='';text($('#kaggle-error'),'');$('#kaggle-setup').classList.remove('hidden')};
+$('#resume-history').onclick=async()=>{if(!state.resumeDataset)return;try{const d=await(await api('/api/v1/resume',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataset:state.resumeDataset})})).json();notice('训练历史已准备：'+d.dataset+'。请使用相同模型名开始训练。')}catch(err){notice(err.message)}};
 $('#logout').onclick=async()=>{await fetch('/api/v1/auth/logout',{method:'POST'});$('#login').classList.remove('hidden')};
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll()});
 fetch('/api/v1/session').then(r=>{if(r.ok){$('#login').classList.add('hidden');startConsole()}});

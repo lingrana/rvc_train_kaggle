@@ -76,9 +76,40 @@ class ControlApiTest(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"configured": True, "owner": "owner"})
+        self.assertEqual(
+            response.json(),
+            {"configured": True, "owner": "owner", "resume_dataset": None},
+        )
         self.assertNotIn(token, response.text)
         self.assertEqual(os.environ["KAGGLE_API_TOKEN"], token)
+
+    async def test_training_history_requires_explicit_restore(self) -> None:
+        await self._login()
+        os.environ["RVC_RESUME_DATASET"] = "owner/rvc-voice-resume"
+        downloads: list[tuple[tuple, dict]] = []
+        fake = SimpleNamespace(
+            whoami=lambda **kwargs: {"username": "owner"},
+            dataset_download=lambda *args, **kwargs: downloads.append((args, kwargs))
+            or str(Path(self.temporary.name) / "resume_download"),
+        )
+        with patch.dict("sys.modules", {"kagglehub": fake}):
+            configured = await self.client.post(
+                "/api/v1/kaggle-auth", json={"token": "secret"}
+            )
+            self.assertEqual(configured.status_code, 200)
+            self.assertEqual(configured.json()["resume_dataset"], "owner/rvc-voice-resume")
+            self.assertEqual(downloads, [])
+            self.assertNotIn("RVC_RESUME_ROOT", os.environ)
+
+            restored = await self.client.post(
+                "/api/v1/resume", json={"dataset": "owner/rvc-voice-resume"}
+            )
+
+        self.assertEqual(restored.status_code, 200)
+        self.assertEqual(restored.json(), {"dataset": "owner/rvc-voice-resume", "status": "ready"})
+        self.assertEqual(downloads[0][0], ("owner/rvc-voice-resume",))
+        self.assertTrue(downloads[0][1]["force_download"])
+        self.assertIn("RVC_RESUME_ROOT", os.environ)
 
     async def test_invalid_kaggle_token_is_removed_and_not_echoed(self) -> None:
         await self._login()

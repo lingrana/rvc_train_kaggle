@@ -146,6 +146,8 @@ def kaggle_auth_status() -> dict[str, Any]:
         "setup_required": not _kaggle_setup_complete,
         "configured": bool(os.environ.get("KAGGLE_API_TOKEN")),
         "owner": os.environ.get("RVC_KAGGLE_USERNAME"),
+        "resume_dataset": os.environ.get("RVC_RESUME_DATASET") or None,
+        "resume_enabled": bool(os.environ.get("RVC_RESUME_ROOT")),
     }
 
 
@@ -158,6 +160,7 @@ async def configure_kaggle_auth(request: Request) -> dict[str, Any]:
     if not token:
         os.environ.pop("KAGGLE_API_TOKEN", None)
         os.environ.pop("RVC_KAGGLE_USERNAME", None)
+        os.environ.pop("RVC_RESUME_ROOT", None)
         _kaggle_setup_complete = True
         return {
             "configured": False,
@@ -174,28 +177,44 @@ async def configure_kaggle_auth(request: Request) -> dict[str, Any]:
     except Exception as error:
         os.environ.pop("KAGGLE_API_TOKEN", None)
         os.environ.pop("RVC_KAGGLE_USERNAME", None)
+        os.environ.pop("RVC_RESUME_ROOT", None)
         raise HTTPException(
             400, f"Kaggle API Token 验证失败 ({type(error).__name__})"
         ) from None
     os.environ["RVC_KAGGLE_USERNAME"] = owner
     _kaggle_setup_complete = True
-    result: dict[str, Any] = {"configured": True, "owner": owner}
-    resume_handle = os.environ.get("RVC_RESUME_DATASET", "").strip()
-    if resume_handle:
-        try:
-            output_dir = TEMP_DIR / "resume_download"
-            downloaded = kagglehub.dataset_download(
-                resume_handle,
-                output_dir=str(output_dir),
-                force_download=True,
-            )
-            os.environ["RVC_RESUME_ROOT"] = str(downloaded)
-            result["resume_dataset"] = resume_handle
-        except Exception as error:
-            result["warning"] = (
-                f"Token 已启用，但恢复数据集下载失败 ({type(error).__name__})"
-            )
-    return result
+    return {
+        "configured": True,
+        "owner": owner,
+        "resume_dataset": os.environ.get("RVC_RESUME_DATASET") or None,
+    }
+
+
+@app.post("/api/v1/resume")
+async def restore_training_history(request: Request) -> dict[str, str]:
+    """Explicitly download a configured checkpoint before a training job starts."""
+    if not os.environ.get("KAGGLE_API_TOKEN"):
+        raise HTTPException(400, "请先验证 Kaggle API Token")
+    body = await request.json()
+    handle = str(body.get("dataset", os.environ.get("RVC_RESUME_DATASET", ""))).strip()
+    if not handle:
+        raise HTTPException(400, "未配置 RVC_RESUME_DATASET")
+    try:
+        import kagglehub
+
+        output_dir = TEMP_DIR / "resume_download"
+        downloaded = kagglehub.dataset_download(
+            handle,
+            output_dir=str(output_dir),
+            force_download=True,
+        )
+    except Exception as error:
+        os.environ.pop("RVC_RESUME_ROOT", None)
+        raise HTTPException(
+            400, f"训练历史下载失败 ({type(error).__name__})"
+        ) from None
+    os.environ["RVC_RESUME_ROOT"] = str(downloaded)
+    return {"dataset": handle, "status": "ready"}
 
 
 @app.get("/api/v1/options")
