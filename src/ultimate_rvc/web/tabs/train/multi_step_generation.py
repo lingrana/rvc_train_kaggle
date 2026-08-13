@@ -83,9 +83,9 @@ def _restore_training_buttons(model_name: str | None):
 def _read_training_progress(model_name: str) -> str:
     """Read progress.json and return HTML progress display."""
     _empty = """
-    <div style="padding:10px; border:1px solid #ddd; border-radius:8px; background:#f9f9f9;">
-        <div style="font-size:16px; font-weight:bold; margin-bottom:8px;">等待训练开始...</div>
-        <div style="background:#e0e0e0; border-radius:8px; height:24px; width:100%;"></div>
+    <div style="padding:12px; border:1px solid #e8ecef; border-radius:10px; background:#fff;">
+        <div style="font-size:13px; font-weight:600; color:#5a6072; margin-bottom:8px;">等待训练开始...</div>
+        <div style="background:#f0f2f5; border-radius:6px; height:20px; width:100%;"></div>
     </div>
     """
     if not model_name:
@@ -106,7 +106,7 @@ def _read_training_progress(model_name: str) -> str:
         pct = round(epoch / total * 100) if total > 0 else 0
         status = "训练已完成！" if done else f"训练中... 第 {epoch}/{total} 轮"
         detail = f"生成器损失: {loss_g:.4f} | 判别器损失: {loss_d:.4f} | 最佳: {best_loss:.4f} (第{best_epoch}轮)"
-        bar_color = "#4caf50" if not done else "#2196f3"
+        bar_color = "#10b981" if done else "#0066ff"
         log_path = os.path.join(TRAINING_MODELS_BASE, model_name, "train.log")
         log_html = ""
         if os.path.isfile(log_path):
@@ -115,15 +115,15 @@ def _read_training_progress(model_name: str) -> str:
             recent = lines[-3:] if len(lines) > 3 else lines
             if recent:
                 log_lines = "".join(l.strip() + "<br>" for l in recent)
-                log_html = f'<div style="margin-top:8px; padding:6px; background:#fff; border-radius:4px; font-family:monospace; font-size:11px; max-height:80px; overflow-y:auto;">{log_lines}</div>'
+                log_html = f'<div style="margin-top:8px; padding:8px; background:#fafbfc; border:1px solid #e8ecef; border-radius:8px; font-family:monospace; font-size:11px; color:#5a6072; max-height:80px; overflow-y:auto;">{log_lines}</div>'
         return f"""
-        <div style="padding:10px; border:1px solid #ddd; border-radius:8px; background:#f9f9f9;">
-            <div style="font-size:16px; font-weight:bold; margin-bottom:8px;">{status}</div>
-            <div style="background:#e0e0e0; border-radius:8px; height:24px; width:100%; position:relative;">
-                <div style="background:linear-gradient(90deg,{bar_color},{bar_color}aa); height:24px; border-radius:8px; width:{pct}%; transition:width 0.5s;"></div>
-                <div style="position:absolute; top:0; left:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:bold; color:#333;">{pct}%</div>
+        <div style="padding:12px; border:1px solid #e8ecef; border-radius:10px; background:#fff;">
+            <div style="font-size:14px; font-weight:700; color:#1a1a2e; margin-bottom:8px;">{status}</div>
+            <div style="background:#f0f2f5; border-radius:6px; height:20px; width:100%; position:relative;">
+                <div style="background:linear-gradient(90deg,{bar_color},{bar_color}aa); height:20px; border-radius:6px; width:{pct}%; transition:width 0.5s;"></div>
+                <div style="position:absolute; top:0; left:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; color:#1a1a2e;">{pct}%</div>
             </div>
-            <div style="margin-top:8px; font-size:13px; color:#555;">{detail}</div>
+            <div style="margin-top:8px; font-size:12px; color:#5a6072;">{detail}</div>
             {log_html}
         </div>
         """
@@ -203,10 +203,10 @@ def _render_step_1(total_config: TotalConfig) -> None:
         upload_progress_html = gr.HTML(
             value="""
             <div style="margin:4px 0 8px 0;">
-              <div style="background:#e0e0e0;border-radius:6px;height:6px;width:100%;">
-                <div id="rvc-upload-bar" style="background:#4caf50;height:6px;border-radius:6px;width:0%;transition:width 0.3s;"></div>
+              <div style="background:#f0f2f5;border-radius:6px;height:6px;width:100%;">
+                <div id="rvc-upload-bar" style="background:#0066ff;height:6px;border-radius:6px;width:0%;transition:width 0.3s;"></div>
               </div>
-              <div id="rvc-upload-text" style="font-size:13px;color:#666;margin-top:2px;"></div>
+              <div id="rvc-upload-text" style="font-size:11px;color:#9ca3b0;margin-top:3px;"></div>
             </div>
             """,
         )
@@ -218,7 +218,7 @@ def _render_step_1(total_config: TotalConfig) -> None:
         upload_status = gr.Markdown(value="", visible=True)
 
         dataset_files_html = gr.HTML(
-            value='<div style="padding:8px;color:#888;font-size:13px;">选择数据集后显示文件列表</div>',
+            value='<div style="padding:8px;color:#9ca3b0;font-size:12px;">选择数据集后显示文件列表</div>',
         )
         audio_preview = gr.Audio(
             label="音频预览",
@@ -763,18 +763,18 @@ def _upload_audio_files(
 
 def _update_dataset_files_display(dataset_path: str) -> tuple[str, gr.update]:
     if not dataset_path:
-        return '<div style="padding:10px; color:#666;">选择数据集后显示文件列表</div>', gr.update(visible=False)
+        return '<div style="padding:10px; color:#9ca3b0; font-size:12px;">选择数据集后显示文件列表</div>', gr.update(visible=False)
 
     files = get_dataset_files(dataset_path)
     if not files:
-        return '<div style="padding:10px; color:#666;">数据集为空</div>', gr.update(visible=False)
+        return '<div style="padding:10px; color:#9ca3b0; font-size:12px;">数据集为空</div>', gr.update(visible=False)
 
-    html_parts = ['<div style="padding:5px; background:#f9f9f9; border-radius:6px;"><b>文件列表：</b></div>']
+    html_parts = ['<div style="padding:8px 12px; background:#fafbfc; border:1px solid #e8ecef; border-radius:8px; font-size:12px; font-weight:600; color:#5a6072;">文件列表</div>']
     for i, (name, path, size) in enumerate(files[:20]):
         size_mb = size / (1024 * 1024)
-        html_parts.append(f'<div style="padding:2px 5px; font-size:12px; border-bottom:1px solid #eee;">{i+1}. {name} ({size_mb:.1f} MB)</div>')
+        html_parts.append(f'<div style="padding:6px 12px; font-size:12px; border-bottom:1px solid #f0f2f5; color:#5a6072;">{i+1}. {name} <span style="color:#9ca3b0;">({size_mb:.1f} MB)</span></div>')
     if len(files) > 20:
-        html_parts.append(f'<div style="padding:2px 5px; font-size:12px; color:#999;">... 还有 {len(files)-20} 个文件</div>')
+        html_parts.append(f'<div style="padding:6px 12px; font-size:11px; color:#9ca3b0;">... 还有 {len(files)-20} 个文件</div>')
 
     first_audio = files[0][1] if files else None
     if first_audio:

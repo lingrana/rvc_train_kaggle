@@ -551,8 +551,8 @@ def _build_download_html(model_name: str | None) -> str:
     """Build direct links for the three validated delivery files."""
     if not model_name:
         return (
-            '<div style="text-align:center;padding:30px;color:rgba(44,47,54,.35);">'
-            '<div style="font-size:14px;">选择模型后显示下载链接</div></div>'
+            '<div style="text-align:center;padding:40px 16px;color:#9ca3b0;">'
+            '<div style="font-size:12px;">选择模型后显示下载链接</div></div>'
         )
     try:
         model_name = validate_model_name(model_name)
@@ -560,16 +560,18 @@ def _build_download_html(model_name: str | None) -> str:
             (TRAINING_MODELS_DIR / model_name / "delivery.json").read_text("utf-8")
         )
     except (ValueError, OSError, json.JSONDecodeError):
-        return '<div style="padding:18px;color:#b42318;">模型尚未通过本地推理兼容性校验。</div>'
+        return '<div style="padding:12px;color:#ef4444;font-size:12px;">模型尚未通过本地推理兼容性校验。</div>'
     buttons = []
     labels = {"pth": "下载 .pth", "index": "下载 .index", "log": "下载 train.log"}
+    colors = {"pth": "#10b981", "index": "#0066ff", "log": "#5a6072"}
     for kind in ("pth", "index", "log"):
         meta = validation.get("files", {}).get(kind, {})
         size_mb = float(meta.get("size", 0)) / 1024 / 1024
+        color = colors[kind]
         buttons.append(
             f'<a href="/api/files/{escape(model_name, quote=True)}/{kind}" '
-            f'style="display:inline-flex;padding:10px 16px;margin:4px;color:#fff;'
-            f'background:#176b57;border-radius:6px;text-decoration:none;font-weight:600;">'
+            f'style="display:inline-flex;padding:8px 16px;margin:4px;color:#fff;'
+            f'background:{color};border-radius:8px;text-decoration:none;font-size:12px;font-weight:600;transition:all .2s;">'
             f'{labels[kind]} ({size_mb:.1f} MB)</a>'
         )
     urls = _get_kaggle_urls(model_name)
@@ -579,13 +581,13 @@ def _build_download_html(model_name: str | None) -> str:
     if kaggle_url:
         slug_display = escape(kaggle_slug) if kaggle_slug else escape(kaggle_url)
         remote = (
-            f'<div style="margin-top:10px;font-size:12px;color:#666;">私有 Kaggle Dataset：'
-            f'<a href="{escape(kaggle_url, quote=True)}" target="_blank">{slug_display}</a></div>'
+            f'<div style="margin-top:10px;font-size:11px;color:#9ca3b0;">私有 Kaggle Dataset：'
+            f'<a href="{escape(kaggle_url, quote=True)}" target="_blank" style="color:#0066ff;">{slug_display}</a></div>'
         )
     return (
         f'<div style="padding:12px;">'
-        f'<div style="font-size:13px;color:rgba(44,47,54,.55);margin-bottom:10px;">'
-        f'<b>{escape(model_name)}</b> · RVC v2 / 48k / F0，已通过结构和索引校验。</div>'
+        f'<div style="font-size:12px;color:#5a6072;margin-bottom:10px;">'
+        f'<b style="color:#1a1a2e;">{escape(model_name)}</b> · RVC v2 / 48k / F0，已通过结构和索引校验。</div>'
         f'{"".join(buttons)}{remote}'
         f'</div>'
     )
@@ -601,11 +603,13 @@ def _build_result_model_selector() -> str:
             for name in options
         )
     return (
-        '<label for="result-model-select" style="display:block;font-size:13px;'
-        'font-weight:600;margin:0 0 7px;color:rgba(44,47,54,.72);">选择模型</label>'
+        '<label for="result-model-select" style="display:block;font-size:11px;'
+        'font-weight:600;margin:0 0 6px;color:#9ca3b0;letter-spacing:.5px;">选择模型</label>'
         f'<select id="result-model-select" style="width:100%;padding:10px 12px;'
-        'border:1px solid rgba(0,0,0,.12);border-radius:9px;background:#fff;'
-        'font-size:14px;box-sizing:border-box;">'
+        'border:1px solid #e8ecef;border-radius:10px;background:#fafbfc;'
+        'font-size:13px;font-weight:500;color:#1a1a2e;box-sizing:border-box;outline:none;transition:border-color .2s;"'
+        'onmouseover="this.style.borderColor=\'#9ca3b0\'" onmouseout="this.style.borderColor=\'#e8ecef\'"'
+        'onfocus="this.style.borderColor=\'#0066ff\'" onblur="this.style.borderColor=\'#e8ecef\'">'
         f'{options_html}</select>'
     )
 
@@ -614,10 +618,10 @@ def _build_result_html() -> str:
     models_dir = TRAINING_MODELS_DIR
     if not models_dir.is_dir():
         return (
-            '<div style="text-align:center;padding:60px 20px;color:rgba(44,47,54,.35);">'
-            '<div style="font-size:48px;margin-bottom:16px;animation:lm-float 4s ease-in-out infinite;">&#127925;</div>'
-            '<div style="font-size:16px;">暂无训练模型</div>'
-            '<div style="font-size:13px;margin-top:8px;color:rgba(44,47,54,.25);">开始训练后这里会自动显示进度</div></div>'
+            '<div style="text-align:center;padding:48px 16px;color:#9ca3b0;">'
+            '<div style="font-size:40px;margin-bottom:12px;">🎵</div>'
+            '<div style="font-size:14px;font-weight:600;">暂无训练模型</div>'
+            '<div style="font-size:12px;margin-top:6px;color:#d1d5db;">开始训练后这里会自动显示进度</div></div>'
         )
     html = ""
     for model_dir in sorted(models_dir.iterdir()):
@@ -648,51 +652,51 @@ def _build_result_html() -> str:
                     s = int(remaining % 60)
                     eta_str = f"{h:02d}:{m:02d}:{s:02d}"
                 if done:
-                    badge = '<span style="background:rgba(43,133,181,.1);color:#2b85b5;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;letter-spacing:.5px;">已完成</span>'
-                    bar_gradient = "linear-gradient(90deg,#2b85b5,#4fb8e8)"
-                    pct_color = "#2b85b5"
-                    avatar_bg = "background:linear-gradient(135deg,rgba(79,182,255,.15),rgba(93,212,184,.1));border:1px solid rgba(79,182,255,.15);"
-                    avatar_stroke = "#2b85b5"
+                    badge = '<span style="background:rgba(16,185,129,.08);color:#10b981;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;">已完成</span>'
+                    bar_gradient = "linear-gradient(90deg,#10b981,#34d399)"
+                    pct_color = "#10b981"
+                    avatar_bg = "background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.15);"
+                    avatar_stroke = "#10b981"
                 else:
-                    badge = '<span style="background:rgba(29,138,106,.1);color:#1d8a6a;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;letter-spacing:.5px;">训练中</span>'
-                    bar_gradient = "linear-gradient(90deg,#1d8a6a,#38b08a)"
-                    pct_color = "#1d8a6a"
-                    avatar_bg = "background:linear-gradient(135deg,rgba(29,138,106,.15),rgba(56,176,138,.1));border:1px solid rgba(29,138,106,.15);"
-                    avatar_stroke = "#1d8a6a"
+                    badge = '<span style="background:rgba(0,102,255,.08);color:#0066ff;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;">训练中</span>'
+                    bar_gradient = "linear-gradient(90deg,#0066ff,#6366f1)"
+                    pct_color = "#0066ff"
+                    avatar_bg = "background:rgba(0,102,255,.08);border:1px solid rgba(0,102,255,.15);"
+                    avatar_stroke = "#0066ff"
                 html += f'''
                 <div class="lm-card lm-fade">
-                    <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
-                        <div style="width:46px;height:46px;border-radius:14px;{avatar_bg}display:flex;align-items:center;justify-content:center;animation:lm-float 4s ease-in-out infinite;">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{avatar_stroke}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+                        <div style="width:42px;height:42px;border-radius:10px;{avatar_bg}display:flex;align-items:center;justify-content:center;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{avatar_stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
                         </div>
                         <div style="flex:1;">
-                            <div style="font-size:18px;font-weight:700;color:#2c2f36;">{name}</div>
-                            <div style="margin-top:4px;">{badge}</div>
+                            <div style="font-size:15px;font-weight:700;color:#1a1a2e;">{name}</div>
+                            <div style="margin-top:3px;">{badge}</div>
                         </div>
                         <div style="text-align:right;">
-                            <div style="font-size:30px;font-weight:800;color:{pct_color};line-height:1;">{pct}%</div>
-                            <div style="font-size:12px;color:rgba(44,47,54,.4);margin-top:2px;">{epoch} / {total} 轮</div>
-                            {'<div style="font-size:11px;color:rgba(44,47,54,.35);margin-top:4px;">⏱ 预计剩余 ' + eta_str + '</div>' if eta_str else ''}
+                            <div style="font-size:26px;font-weight:700;color:{pct_color};line-height:1;">{pct}%</div>
+                            <div style="font-size:11px;color:#9ca3b0;margin-top:2px;">{epoch} / {total} 轮</div>
+                            {'<div style="font-size:10px;color:#9ca3b0;margin-top:3px;">⏱ 预计剩余 ' + eta_str + '</div>' if eta_str else ''}
                         </div>
                     </div>
-                    <div style="background:rgba(0,0,0,.05);border-radius:10px;height:10px;width:100%;overflow:hidden;">
-                        <div style="background:{bar_gradient};height:10px;border-radius:10px;width:{pct}%;transition:width .5s ease;"></div>
+                    <div style="background:#f0f2f5;border-radius:6px;height:8px;width:100%;overflow:hidden;">
+                        <div style="background:{bar_gradient};height:8px;border-radius:6px;width:{pct}%;transition:width .5s ease;"></div>
                     </div>
-                    <div style="display:flex;gap:0;margin-top:14px;padding-top:14px;border-top:1px solid rgba(0,0,0,.05);">
+                    <div style="display:flex;gap:0;margin-top:12px;padding-top:12px;border-top:1px solid #f0f2f5;">
                         <div style="flex:1;text-align:center;">
-                            <div style="font-size:11px;color:rgba(44,47,54,.4);text-transform:uppercase;letter-spacing:1px;">生成器损失</div>
-                            <div style="font-size:17px;font-weight:700;color:#2c2f36;margin-top:3px;">{loss_g:.4f}</div>
+                            <div style="font-size:10px;color:#9ca3b0;text-transform:uppercase;letter-spacing:.5px;">生成器损失</div>
+                            <div style="font-size:14px;font-weight:700;color:#1a1a2e;margin-top:2px;">{loss_g:.4f}</div>
                         </div>
-                        <div style="border-left:1px solid rgba(0,0,0,.05);"></div>
+                        <div style="border-left:1px solid #f0f2f5;"></div>
                         <div style="flex:1;text-align:center;">
-                            <div style="font-size:11px;color:rgba(44,47,54,.4);text-transform:uppercase;letter-spacing:1px;">判别器损失</div>
-                            <div style="font-size:17px;font-weight:700;color:#2c2f36;margin-top:3px;">{loss_d:.4f}</div>
+                            <div style="font-size:10px;color:#9ca3b0;text-transform:uppercase;letter-spacing:.5px;">判别器损失</div>
+                            <div style="font-size:14px;font-weight:700;color:#1a1a2e;margin-top:2px;">{loss_d:.4f}</div>
                         </div>
-                        <div style="border-left:1px solid rgba(0,0,0,.05);"></div>
+                        <div style="border-left:1px solid #f0f2f5;"></div>
                         <div style="flex:1;text-align:center;">
-                            <div style="font-size:11px;color:rgba(44,47,54,.4);text-transform:uppercase;letter-spacing:1px;">最佳损失</div>
-                            <div style="font-size:17px;font-weight:700;color:#1d8a6a;margin-top:3px;">{best_loss:.4f}</div>
-                            <div style="font-size:10px;color:rgba(44,47,54,.3);">第 {best_epoch} 轮</div>
+                            <div style="font-size:10px;color:#9ca3b0;text-transform:uppercase;letter-spacing:.5px;">最佳损失</div>
+                            <div style="font-size:14px;font-weight:700;color:#10b981;margin-top:2px;">{best_loss:.4f}</div>
+                            <div style="font-size:9px;color:#9ca3b0;">第 {best_epoch} 轮</div>
                         </div>
                     </div>
                 </div>
@@ -701,52 +705,87 @@ def _build_result_html() -> str:
                 continue
         else:
             html += (
-                '<div class="lm-card lm-fade" style="opacity:.6;">'
-                '<div style="display:flex;align-items:center;gap:14px;">'
-                f'<div style="width:46px;height:46px;border-radius:14px;background:rgba(0,0,0,.04);border:1px dashed rgba(0,0,0,.1);display:flex;align-items:center;justify-content:center;animation:lm-float 4s ease-in-out infinite;">'
-                f'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
+                '<div class="lm-card lm-fade" style="opacity:.5;">'
+                '<div style="display:flex;align-items:center;gap:12px;">'
+                f'<div style="width:42px;height:42px;border-radius:10px;background:#f0f2f5;border:1px dashed #e8ecef;display:flex;align-items:center;justify-content:center;">'
+                f'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
                 f'</div>'
-                f'<div><div style="font-size:18px;font-weight:700;color:#aaa;">{name}</div>'
-                f'<div style="margin-top:4px;"><span style="background:rgba(0,0,0,.04);color:#bbb;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;">等待训练</span></div></div></div></div>'
+                f'<div><div style="font-size:15px;font-weight:700;color:#9ca3b0;">{name}</div>'
+                f'<div style="margin-top:3px;"><span style="background:#f0f2f5;color:#9ca3b0;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;">等待训练</span></div></div></div></div>'
             )
     if not html:
         html = (
-            '<div style="text-align:center;padding:60px 20px;color:rgba(44,47,54,.35);">'
-            '<div style="font-size:48px;margin-bottom:16px;animation:lm-float 4s ease-in-out infinite;">&#127925;</div>'
-            '<div style="font-size:16px;">暂无训练模型</div></div>'
+            '<div style="text-align:center;padding:48px 16px;color:#9ca3b0;">'
+            '<div style="font-size:40px;margin-bottom:12px;">🎵</div>'
+            '<div style="font-size:14px;font-weight:600;">暂无训练模型</div>'
+            '<div style="font-size:12px;margin-top:6px;color:#d1d5db;">开始训练后这里会自动显示进度</div></div>'
         )
     return html
 
 
 def render_app() -> gr.Blocks:
     css = """
-    h1 { text-align: center; margin-top: 20px; margin-bottom: 20px; }
+    /* ── MiMo 风格全局样式 ── */
+    h1 { text-align: center; margin-top: 20px; margin-bottom: 20px; font-weight: 700 !important; letter-spacing: -0.5px !important; }
     #training-tab-button { font-weight: bold !important;}
     @keyframes lm-shimmer{0%{background-position:-200% center}100%{background-position:200% center}}
     @keyframes lm-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
-    .lm-card{background:rgba(255,255,255,.75)!important;border:1px solid rgba(0,0,0,.06)!important;backdrop-filter:blur(12px);border-radius:18px!important;padding:24px 28px!important;box-shadow:0 2px 16px rgba(0,0,0,.04)!important;transition:transform .4s cubic-bezier(.22,1,.36,1),box-shadow .4s ease!important;margin-bottom:20px!important;}
-    .lm-card:hover{transform:translateY(-3px);box-shadow:0 12px 36px rgba(0,0,0,.08)!important;}
-    .lm-btn{transition:all .35s cubic-bezier(.22,1,.36,1)!important;position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:6px;padding:10px 22px;color:#fff;border-radius:11px;text-decoration:none;font-size:13px;font-weight:600;letter-spacing:.5px;}
-    .lm-btn:hover{transform:translateY(-2px);filter:brightness(.95);}
-    .lm-btn:active{transform:scale(.97);}
-    .lm-green{background:linear-gradient(135deg,#1d8a6a,#38b08a);box-shadow:0 3px 16px rgba(29,138,106,.2);}
-    .lm-blue{background:linear-gradient(135deg,#2b85b5,#4fb8e8);box-shadow:0 3px 16px rgba(43,133,181,.2);}
+
+    /* ── 卡片 ── */
+    .lm-card{background:#fff!important;border:1px solid #e8ecef!important;border-radius:14px!important;padding:20px 24px!important;box-shadow:0 2px 12px rgba(0,0,0,.04)!important;transition:all .2s ease!important;margin-bottom:16px!important;}
+    .lm-card:hover{border-color:#9ca3b0!important;box-shadow:0 4px 20px rgba(0,0,0,.06)!important;}
     .lm-card, .lm-card *{opacity:1!important;transition:none!important;}
     .lm-fade{opacity:1!important;}
+
+    /* ── 按钮 ── */
+    .lm-btn{transition:all .2s ease!important;position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:6px;padding:10px 22px;color:#fff;border-radius:10px;text-decoration:none;font-size:13px;font-weight:600;letter-spacing:.3px;}
+    .lm-btn:hover{transform:translateY(-1px);filter:brightness(.95);}
+    .lm-btn:active{transform:scale(.98);}
+    .lm-green{background:#10b981;box-shadow:0 2px 12px rgba(16,185,129,.2);}
+    .lm-blue{background:#0066ff;box-shadow:0 2px 12px rgba(0,102,255,.2);}
+
+    /* ── 结果卡片 ── */
     #result-cards{width:100%!important;max-width:100%!important;overflow-x:hidden!important;box-sizing:border-box!important;}
     #result-cards > div{width:100%!important;max-width:100%!important;box-sizing:border-box!important;overflow-x:hidden!important;}
     #result-cards .lm-card{width:100%!important;max-width:100%!important;box-sizing:border-box!important;overflow:hidden!important;}
     #result-cards *{box-sizing:border-box;max-width:100%;}
-    .rvc-progress{padding:18px;border:1px solid rgba(0,0,0,.1);border-radius:8px;background:#fff;box-sizing:border-box}
-    .rvc-progress-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}.rvc-progress-head strong{font-size:17px;overflow-wrap:anywhere}.rvc-progress-head span{font-size:13px;color:#1d715b}
-    .rvc-progress-track{height:24px;border-radius:6px;background:#e7eaec;overflow:hidden;position:relative}.rvc-progress-track>div{height:100%;width:0;background:#21866b;transition:width .35s}.rvc-progress-track>b{position:absolute;inset:0;display:grid;place-items:center;font-size:12px;color:#202429}
-    .rvc-progress-stats{display:grid;grid-template-columns:repeat(5,minmax(110px,1fr));gap:8px;margin-top:13px;font-size:12px;color:#687077}.rvc-progress-stats b{display:block;margin-top:3px;color:#292e33;font-size:13px}
-    .rvc-progress-alert{margin-top:12px;padding:9px 11px;border:1px solid #dc9c3d;background:#fff8e8;color:#805410;border-radius:6px;font-size:13px}
-    .rvc-progress-log{margin-top:12px;font-size:13px}.rvc-progress-log pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:230px;overflow:auto;background:#f5f6f7;padding:10px;border-radius:6px;font-size:11px}
-    .rvc-history{margin-top:18px}.rvc-history-row{display:grid;grid-template-columns:minmax(120px,1fr) minmax(120px,1fr) 70px;gap:12px;padding:9px 4px;border-bottom:1px solid rgba(0,0,0,.07);font-size:13px}.rvc-history-row span:last-child{text-align:right}
+
+    /* ── 训练进度 ── */
+    .rvc-progress{padding:16px;border:1px solid #e8ecef;border-radius:12px;background:#fff;box-sizing:border-box}
+    .rvc-progress-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}
+    .rvc-progress-head strong{font-size:15px;overflow-wrap:anywhere;font-weight:700}
+    .rvc-progress-head span{font-size:12px;color:#10b981;font-weight:600}
+    .rvc-progress-track{height:20px;border-radius:6px;background:#f0f2f5;overflow:hidden;position:relative}
+    .rvc-progress-track>div{height:100%;width:0;background:linear-gradient(90deg,#0066ff,#6366f1);transition:width .35s;border-radius:6px}
+    .rvc-progress-track>b{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;color:#1a1a2e;font-weight:600}
+    .rvc-progress-stats{display:grid;grid-template-columns:repeat(5,minmax(110px,1fr));gap:8px;margin-top:12px;font-size:11px;color:#5a6072}
+    .rvc-progress-stats b{display:block;margin-top:2px;color:#1a1a2e;font-size:12px;font-weight:600}
+    .rvc-progress-alert{margin-top:10px;padding:8px 12px;border:1px solid #f59e0b;background:#fefce8;color:#92400e;border-radius:8px;font-size:12px}
+    .rvc-progress-log{margin-top:10px;font-size:12px}
+    .rvc-progress-log pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;background:#fafbfc;padding:12px;border-radius:8px;font-size:11px;border:1px solid #e8ecef;font-family:'SF Mono','JetBrains Mono',monospace;color:#5a6072}
+
+    /* ── 历史记录 ── */
+    .rvc-history{margin-top:16px}
+    .rvc-history h3{font-size:12px;font-weight:700;color:#9ca3b0;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px}
+    .rvc-history-row{display:grid;grid-template-columns:minmax(120px,1fr) minmax(120px,1fr) 70px;gap:12px;padding:8px 4px;border-bottom:1px solid #f0f2f5;font-size:12px;color:#5a6072}
+    .rvc-history-row span:last-child{text-align:right;color:#0066ff;font-weight:600;cursor:pointer}
+    .rvc-history-row span:last-child:hover{text-decoration:underline}
+
+    /* ── 响应式 ── */
     @media(max-width:720px){.rvc-progress-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.rvc-progress-head{align-items:flex-start;flex-direction:column}.rvc-history-row{grid-template-columns:minmax(90px,1fr) minmax(100px,1fr) 55px}}
+
+    /* ── 隐藏默认 footer ── */
     footer.svelte-czcr5b,
     footer[class*="svelte-"]{display:none!important;}
+
+    /* ── 自定义折叠面板 ── */
+    .rvc-collapse{border:1px solid #e8ecef;border-radius:12px;margin-bottom:12px;overflow:visible}
+    .rvc-collapse-head{padding:12px 16px;background:#fff;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;font-size:13px;font-weight:600;color:#5a6072;border-radius:12px;transition:all .2s}
+    .rvc-collapse-head:hover{background:#fafbfc}
+    .rvc-collapse-head .arrow{transition:transform .2s;font-size:10px;color:#9ca3b0}
+    .rvc-collapse-head.open .arrow{transform:rotate(90deg)}
+    .rvc-collapse-body{padding:16px;display:none}
+    .rvc-collapse-body.open{display:block}
     """
     cache_delete_frequency = 86400
     cache_delete_cutoff = 86400
@@ -778,27 +817,25 @@ def render_app() -> gr.Blocks:
 
         with gr.Tab("Progress", elem_id="progress-tab"):
             gr.HTML(
-                '<div style="text-align:center;margin:20px auto 8px;">'
-                '<div style="font-size:clamp(24px,3vw,32px);font-weight:900;letter-spacing:clamp(2px,.5vw,6px);background:linear-gradient(135deg,#2b85b5 0%,#1d8a6a 35%,#38b08a 65%,#2b85b5 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;background-size:300% auto;animation:lm-shimmer 8s linear infinite;">训练进度</div>'
-                '<div style="width:120px;height:1px;margin:16px auto 0;background:linear-gradient(90deg,transparent,rgba(42,160,130,.2),rgba(58,159,216,.2),transparent);"></div>'
+                '<div style="text-align:center;margin:16px auto 12px;">'
+                '<div style="font-size:clamp(22px,3vw,28px);font-weight:700;letter-spacing:-0.5px;color:#1a1a2e;">训练进度</div>'
                 '</div>'
-                '<div id="progress-panel" style="max-width:1100px;margin:20px auto;">'
+                '<div id="progress-panel" style="max-width:1100px;margin:16px auto;">'
                 '<div class="rvc-progress" data-rvc-progress><div class="rvc-progress-head"><strong data-role="model">等待任务</strong><span data-role="phase">等待训练开始</span></div>'
                 '<div class="rvc-progress-track"><div data-role="bar"></div><b data-role="percent">0.0%</b></div>'
                 '<div class="rvc-progress-stats"><span>轮次<b data-role="epoch">0 / 0</b></span><span>批次<b data-role="batch">--</b></span><span>已用<b data-role="elapsed">00:00:00</b></span><span>剩余<b data-role="eta">--:--:--</b></span><span>损失<b data-role="loss">G 0.0000 · D 0.0000</b></span></div>'
-                '<div class="rvc-progress-alert" data-role="alert" hidden></div><details class="rvc-progress-log"><summary>最近日志</summary><pre data-role="log"></pre></details></div>'
+                '<div class="rvc-progress-alert" data-role="alert" hidden></div><details class="rvc-progress-log"><summary style="font-weight:600;cursor:pointer;color:#5a6072;">最近日志</summary><pre data-role="log"></pre></details></div>'
                 '<div class="rvc-history"><h3>历史模型</h3><div data-role="history"></div></div>'
-                '<div style="margin-top:16px;text-align:center;">'
-                '<button id="rvc-cleanup-btn" type="button" style="padding:8px 18px;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff;color:#555;font-size:12px;cursor:pointer;">清理残留训练进程</button>'
+                '<div style="margin-top:12px;text-align:center;">'
+                '<button id="rvc-cleanup-btn" type="button" style="padding:6px 14px;border:1px solid #e8ecef;border-radius:8px;background:#fff;color:#5a6072;font-size:11px;font-weight:500;cursor:pointer;transition:all .2s;" onmouseover="this.style.borderColor=\'#9ca3b0\'" onmouseout="this.style.borderColor=\'#e8ecef\'">清理残留训练进程</button>'
                 '</div>'
                 '</div>'
             )
 
         with gr.Tab("Result"):
             gr.HTML("""
-            <div style="text-align:center;margin-bottom:8px;">
-                <div style="font-size:clamp(24px,3vw,32px);font-weight:900;letter-spacing:clamp(2px,.5vw,6px);background:linear-gradient(135deg,#2b85b5 0%,#1d8a6a 35%,#38b08a 65%,#2b85b5 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;background-size:300% auto;animation:lm-shimmer 8s linear infinite;">模型下载</div>
-                <div style="width:120px;height:1px;margin:16px auto 0;background:linear-gradient(90deg,transparent,rgba(42,160,130,.2),rgba(58,159,216,.2),transparent);"></div>
+            <div style="text-align:center;margin-bottom:12px;">
+                <div style="font-size:clamp(22px,3vw,28px);font-weight:700;letter-spacing:-0.5px;color:#1a1a2e;">模型下载</div>
             </div>
             """)
             gr.HTML(_build_result_model_selector(), elem_id="result-model-selector")
@@ -806,8 +843,8 @@ def render_app() -> gr.Blocks:
 
 
         gr.HTML(
-            '<div id="rvc-footer" style="text-align:center;padding:20px 0 8px;color:rgba(44,47,54,.42);font-size:12px;letter-spacing:.3px;">'
-            '<span id="rvc-footer-year"></span>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="https://github.com/lingrana/rvc_train_kaggle" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:none;">@lingran</a>'
+            '<div id="rvc-footer" style="text-align:center;padding:32px 0 16px;color:#9ca3b0;font-size:12px;letter-spacing:.3px;">'
+            '<a href="https://github.com/lingrana/rvc_train_kaggle" target="_blank" rel="noopener noreferrer" style="color:#9ca3b0;text-decoration:none;transition:color .2s;" onmouseover="this.style.color=\'#0066ff\'" onmouseout="this.style.color=\'#9ca3b0\'">© 2026 lingran · 用心打造每一个项目</a>'
             '</div>'
         )
 
