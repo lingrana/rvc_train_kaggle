@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import ipaddress
@@ -12,8 +13,8 @@ import socket
 import stat
 import time
 import zipfile
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path, PurePosixPath
 from urllib.parse import urljoin, urlsplit
 
@@ -215,6 +216,40 @@ def directory_lock(
             if time.monotonic() >= deadline:
                 raise TimeoutError(f"Timed out waiting for lock: {path}")
             time.sleep(0.05)
+    try:
+        yield
+    finally:
+        try:
+            for child in path.iterdir():
+                child.unlink(missing_ok=True)
+            path.rmdir()
+        except OSError:
+            pass
+
+
+@asynccontextmanager
+async def async_directory_lock(
+    path: Path, *, timeout: float = 10, stale_after: float = 3600
+) -> AsyncIterator[None]:
+    """Acquire a directory lock without blocking an async event loop."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            path.mkdir(parents=True)
+            (path / "owner").write_text(f"{os.getpid()}\n{time.time()}\n", "ascii")
+            break
+        except FileExistsError:
+            try:
+                if time.time() - path.stat().st_mtime > stale_after:
+                    for child in path.iterdir():
+                        child.unlink(missing_ok=True)
+                    path.rmdir()
+                    continue
+            except OSError:
+                pass
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"Timed out waiting for lock: {path}")
+            await asyncio.sleep(0.05)
     try:
         yield
     finally:

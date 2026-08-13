@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import os
 import secrets
@@ -187,6 +188,58 @@ class ControlApiTest(unittest.IsolatedAsyncioTestCase):
             },
         )
         self.assertEqual(response.status_code, 413)
+
+    async def test_upload_progress_does_not_wait_for_stream_lock(self) -> None:
+        await self._login()
+        first = b"RIFF" + b"a" * 32
+        rest = b"b" * 32
+        begin = await self.client.post(
+            "/api/v1/uploads/direct",
+            json={
+                "dataset": "DemoSet",
+                "filename": "paused.wav",
+                "size": len(first) + len(rest),
+            },
+        )
+        self.assertEqual(begin.status_code, 201)
+        upload_id = begin.json()["id"]
+        release = asyncio.Event()
+
+        class PausingStream(httpx.AsyncByteStream):
+            async def __aiter__(self):
+                yield first
+                await release.wait()
+                yield rest
+
+        upload_task = asyncio.create_task(
+            self.client.put(
+                f"/api/v1/uploads/direct/{upload_id}",
+                content=PausingStream(),
+            )
+        )
+        temporary = control_app.UPLOADS_DIR / upload_id / ".uploading"
+        for _ in range(100):
+            if temporary.exists():
+                break
+            await asyncio.sleep(0.01)
+        else:
+            self.fail("上传流未开始")
+
+        progress = await asyncio.wait_for(
+            self.client.post(
+                f"/api/v1/uploads/direct/{upload_id}/progress",
+                json={"received": len(first)},
+            ),
+            timeout=1,
+        )
+        self.assertEqual(progress.status_code, 200)
+        self.assertGreaterEqual(progress.json()["received"], len(first))
+
+        release.set()
+        uploaded = await upload_task
+        self.assertEqual(uploaded.status_code, 200)
+        status = await self.client.get(f"/api/v1/uploads/{upload_id}")
+        self.assertEqual(status.json()["status"], "completed")
 
     async def test_token_is_bound_to_configured_user(self) -> None:
         expires = int(__import__("time").time()) + 60

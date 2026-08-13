@@ -29,7 +29,7 @@ from ultimate_rvc.control.jobs import (
 )
 from ultimate_rvc.rvc.train.delivery import atomic_json_dump, delivery_files, validate_model_name
 from ultimate_rvc.rvc.train.progress import read_progress
-from ultimate_rvc.security import directory_lock
+from ultimate_rvc.security import async_directory_lock, directory_lock
 
 COOKIE_NAME = "rvc-control-session"
 COOKIE_TTL = 24 * 60 * 60
@@ -293,6 +293,11 @@ def _upload_path(upload_id: str) -> Path:
     return UPLOADS_DIR / upload_id
 
 
+def _upload_manifest_lock(upload_id: str) -> Path:
+    """Return the short-lived lock used for manifest updates."""
+    return UPLOADS_DIR / f".{upload_id}.manifest.lock"
+
+
 def _manifest(upload_id: str) -> dict[str, Any]:
     try:
         return json.loads((_upload_path(upload_id) / "manifest.json").read_text("utf-8"))
@@ -380,34 +385,60 @@ async def upload_direct(upload_id: str, request: Request) -> dict[str, Any]:
     """Stream one whole file to disk while publishing byte-level progress."""
     directory = _upload_path(upload_id)
     temporary = directory / ".uploading"
-    with directory_lock(UPLOADS_DIR / f".{upload_id}.lock", timeout=10):
-        manifest = _manifest(upload_id)
-        if manifest.get("status") != "uploading":
-            raise HTTPException(409, "上传任务已结束")
+    stream_lock = UPLOADS_DIR / f".{upload_id}.lock"
+    manifest_lock = _upload_manifest_lock(upload_id)
+    # Keep the stream lock for the lifetime of this PUT, but never hold it
+    # while progress requests update the manifest.
+    async with async_directory_lock(stream_lock, timeout=10, stale_after=UPLOAD_TTL):
+        async with async_directory_lock(manifest_lock, timeout=5):
+            manifest = _manifest(upload_id)
+            if manifest.get("status") != "uploading":
+                raise HTTPException(409, "上传任务已结束")
+            expected_size = int(manifest["size"])
+
         received = 0
         digest = hashlib.sha256()
         try:
             with temporary.open("wb") as output:
                 async for data in request.stream():
                     received += len(data)
-                    if received > int(manifest["size"]):
+                    if received > expected_size:
                         raise HTTPException(400, "上传文件超过声明大小")
                     output.write(data)
                     digest.update(data)
-                    manifest.update(received=received, updated_at=time.time())
-                    atomic_json_dump(manifest, directory / "manifest.json")
-            if received != int(manifest["size"]):
+                    async with async_directory_lock(manifest_lock, timeout=5):
+                        current = _manifest(upload_id)
+                        if current.get("status") != "uploading":
+                            raise HTTPException(409, "上传任务已结束")
+                        current.update(
+                            received=max(int(current.get("received", 0)), received),
+                            updated_at=time.time(),
+                        )
+                        atomic_json_dump(current, directory / "manifest.json")
+            if received != expected_size:
                 raise HTTPException(400, "上传文件大小不匹配")
-            dataset_dir = TRAINING_AUDIO_DIR / manifest["dataset"]
-            dataset_dir.mkdir(parents=True, exist_ok=True)
-            destination = dataset_dir / manifest["filename"]
-            os.replace(temporary, destination)
-            manifest.update(received=received, status="completed", updated_at=time.time())
-            atomic_json_dump(manifest, directory / "manifest.json")
-            return {"dataset": str(dataset_dir), "filename": destination.name, "sha256": digest.hexdigest()}
+            async with async_directory_lock(manifest_lock, timeout=5):
+                manifest = _manifest(upload_id)
+                dataset_dir = TRAINING_AUDIO_DIR / manifest["dataset"]
+                dataset_dir.mkdir(parents=True, exist_ok=True)
+                destination = dataset_dir / manifest["filename"]
+                os.replace(temporary, destination)
+                manifest.update(received=received, status="completed", updated_at=time.time())
+                atomic_json_dump(manifest, directory / "manifest.json")
+                result = {
+                    "dataset": str(dataset_dir),
+                    "filename": destination.name,
+                    "sha256": digest.hexdigest(),
+                }
+            return result
         except Exception:
-            manifest.update(status="failed", updated_at=time.time())
-            atomic_json_dump(manifest, directory / "manifest.json")
+            try:
+                async with async_directory_lock(manifest_lock, timeout=5):
+                    manifest = _manifest(upload_id)
+                    manifest.update(status="failed", updated_at=time.time())
+                    atomic_json_dump(manifest, directory / "manifest.json")
+            except (OSError, TimeoutError, HTTPException):
+                pass
             temporary.unlink(missing_ok=True)
             raise
 
@@ -417,11 +448,11 @@ async def upload_progress(upload_id: str, request: Request) -> dict[str, Any]:
     """Accept client-reported byte progress so notebooks can track uploads
     even when a reverse proxy buffers the entire request body."""
     directory = _upload_path(upload_id)
-    with directory_lock(UPLOADS_DIR / f".{upload_id}.lock", timeout=5):
+    body = await request.json()
+    async with async_directory_lock(_upload_manifest_lock(upload_id), timeout=5):
         manifest = _manifest(upload_id)
         if manifest.get("status") != "uploading":
             return manifest
-        body = await request.json()
         reported = min(int(body.get("received", 0)), int(manifest["size"]))
         if reported > int(manifest.get("received", 0)):
             manifest.update(received=reported, updated_at=time.time())
