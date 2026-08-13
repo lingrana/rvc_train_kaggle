@@ -19,18 +19,6 @@
 - **私有持久化**：训练完成后把三个文件上传到私有 Kaggle Dataset
 - **本地兼容门禁**：模型结构、生成器短帧推理和 768 维 FAISS 索引校验通过后才开放下载
 
-## 使用方法
-
-详见 [Kaggle RVC 教程](KAGGLE_RVC教程.md)
-
-### 快速开始
-
-1. 登录 Kaggle，创建 Notebook
-2. 上传并打开仓库中的 `rvc_train.ipynb`
-3. 设置任一 GPU（推荐 T4 x2）并开启 Internet
-4. 按顺序运行所有 Cell
-5. 使用输出的 Cloudflare 地址、用户名和密码登录
-
 ## 推荐训练参数
 
 | 参数 | 推荐值 | 说明 |
@@ -65,9 +53,8 @@ HRVC/
 │   └── training/                # 训练输出
 ├── src/ultimate_rvc/
 │   ├── rvc/train/train.py       # 训练核心
-│   ├── web/main.py              # Web 界面
-│   └── web/tabs/train/          # 训练步骤
-├── rvc_train.ipynb              # Kaggle Notebook
+│   └── control/                 # 训练控制服务与 Web 界面
+├── tools/                       # Kaggle 环境准备与启动脚本
 └── pyproject.toml               # 项目配置
 ```
 
@@ -85,17 +72,4 @@ HRVC/
 ## 许可证
 
 MIT License - 基于 Ultimate RVC 修改
-
-### 新前端控制面板
-
-已将前端界面完全替换为 MiMo 风格控制面板：
-
-**文件**：`rvc_control.html`
-
-**使用方式**：
-1. 在 Kaggle Notebook 中运行 `rvc_train.ipynb` 完成环境准备
-2. 打开 `rvc_control.html` 文件（或上传到工作目录）
-3. 使用左侧训练步骤 + 右侧控制面板
-
-**注意**：实际训练仍通过 Gradio Web UI 进行（Cloudflare 地址），此 HTML 为最终结果预览和控制面板。
 
