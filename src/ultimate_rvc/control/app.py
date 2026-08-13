@@ -147,6 +147,33 @@ def options() -> dict[str, Any]:
     return {"datasets": datasets, "part_size": PART_SIZE}
 
 
+@app.get("/api/v1/datasets/{name}/files")
+def list_dataset_files(name: str) -> dict[str, Any]:
+    dataset_dir = TRAINING_AUDIO_DIR / name
+    if not dataset_dir.is_dir():
+        raise HTTPException(404, "数据集不存在")
+    files = sorted(
+        {"name": f.name, "size": f.stat().st_size, "ext": f.suffix.lower()}
+        for f in dataset_dir.iterdir()
+        if f.is_file() and not f.name.startswith(".")
+    )
+    return {"dataset": name, "files": files}
+
+
+@app.get("/api/v1/audio/{dataset}/{filename}")
+def serve_audio(dataset: str, filename: str):
+    from fastapi.responses import FileResponse
+    file_path = TRAINING_AUDIO_DIR / dataset / Path(filename).name
+    if not file_path.is_file():
+        raise HTTPException(404, "文件不存在")
+    media_type = {
+        ".wav": "audio/wav", ".flac": "audio/flac",
+        ".mp3": "audio/mpeg", ".ogg": "audio/ogg",
+        ".m4a": "audio/mp4", ".aac": "audio/aac",
+    }.get(file_path.suffix.lower(), "application/octet-stream")
+    return FileResponse(file_path, media_type=media_type)
+
+
 def _upload_path(upload_id: str) -> Path:
     try:
         uuid.UUID(upload_id)

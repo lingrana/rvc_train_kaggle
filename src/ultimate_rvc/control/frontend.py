@@ -314,7 +314,7 @@ footer a:hover{color:var(--accent)}
             <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">⚡</span><span class="st">GPU</span><span class="sa"></span></div>
               <div class="sel-dd"><div class="sel-opt selected" onclick="selPick(this,'extraction-device')" data-value="GPU"><span class="oi">⚡</span><span class="ol">GPU</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'extraction-device')" data-value="Automatic"><span class="oi">🤖</span><span class="ol">自动</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'extraction-device')" data-value="CPU"><span class="oi">💻</span><span class="ol">CPU</span><span class="oc">✓</span></div></div></div>
           </div>
-          <div class="field"><div class="field-label">GPU ID（逗号分隔）</div><input class="field-input" id="extraction-gpus" value="0"></div>
+          <div class="field"><div class="field-label">GPU ID（逗号分隔）</div><input class="field-input" id="extraction-gpus" value="0" placeholder="0,1,2..."></div>
         </div>
       </div>
     </div>
@@ -399,7 +399,7 @@ footer a:hover{color:var(--accent)}
             <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">⚡</span><span class="st">GPU</span><span class="sa"></span></div>
               <div class="sel-dd"><div class="sel-opt selected" onclick="selPick(this,'training-device')" data-value="GPU"><span class="oi">⚡</span><span class="ol">GPU</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'training-device')" data-value="Automatic"><span class="oi">🤖</span><span class="ol">自动</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'training-device')" data-value="CPU"><span class="oi">💻</span><span class="ol">CPU</span><span class="oc">✓</span></div></div></div>
           </div>
-          <div class="field"><div class="field-label">GPU ID（逗号分隔）</div><input class="field-input" id="training-gpus" value="0"></div>
+          <div class="field"><div class="field-label">GPU ID（逗号分隔）</div><input class="field-input" id="training-gpus" value="0" placeholder="0,1,2..."></div>
           <div class="field"><div class="field-label">训练精度</div>
             <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">🔢</span><span class="st">fp32</span><span class="sa"></span></div>
               <div class="sel-dd"><div class="sel-opt selected" onclick="selPick(this,'precision')" data-value="fp32"><span class="oi">🔢</span><span class="ol">fp32</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'precision')" data-value="fp16"><span class="oi">⚡</span><span class="ol">fp16</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'precision')" data-value="bf16"><span class="oi">🔬</span><span class="ol">bf16</span><span class="oc">✓</span></div></div></div>
@@ -464,10 +464,35 @@ function selMulti(opt){opt.classList.toggle('selected');const count=opt.closest(
 document.addEventListener('click',e=>{if(!e.target.closest('.sel')){document.querySelectorAll('.sel-dd.open').forEach(d=>d.classList.remove('open'));document.querySelectorAll('.sel-btn.open').forEach(c=>c.classList.remove('open'))}});
 
 function onFieldChange(fieldId,value){
-  if(fieldId==='dataset-type'){const isNew=value==='new';$('#dataset-new-wrap').style.display=isNew?'':'none';$('#dataset-existing-wrap').style.display=isNew?'none':'';$('#file-input').disabled=!isNew}
+  if(fieldId==='dataset-type'){const isNew=value==='new';$('#dataset-new-wrap').style.display=isNew?'':'none';$('#dataset-existing-wrap').style.display=isNew?'none':'';$('#file-input').disabled=!isNew;if(!isNew){const ds=state.selectedValues['existing-dataset']||'';if(ds)loadFiles(ds)}else{loadFiles($('#dataset').value.trim())}}
+  if(fieldId==='existing-dataset'){loadFiles(value)}
   if(fieldId==='embedder'){$('#custom-embedder-wrap').style.display=value==='custom'?'':'none'}
   if(fieldId==='pretrained'){$('#custom-pretrained-wrap').style.display=value==='Custom'?'':'none'}
   if(fieldId==='upload-model'){$('#upload-name-wrap').style.display=value==='on'?'':'none'}
+}
+
+async function loadFiles(dataset){
+  const el=$('#file-list');
+  if(!dataset){el.innerHTML='<div style="padding:12px;color:var(--text-muted);font-size:12px">选择数据集后显示文件列表</div>';return}
+  try{
+    const d=await(await api('/api/v1/datasets/'+encodeURIComponent(dataset)+'/files')).json();
+    const files=d.files||[];
+    if(!files.length){el.innerHTML='<div style="padding:12px;color:var(--text-muted);font-size:12px">数据集为空</div>';return}
+    const icons={'.wav':'🎵','.flac':'🎶','.mp3':'🔊','.ogg':'🔉','.m4a':'🎧'};
+    el.innerHTML=files.map(f=>{
+      const size=f.size>1048576?(f.size/1048576).toFixed(1)+' MB':(f.size/1024).toFixed(0)+' KB';
+      return'<div class="file-row" onclick="previewAudio(\''+d.dataset+'/'+f.name+'\')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;transition:background .2s" onmouseover="this.style.background=\'var(--hover)\'" onmouseout="this.style.background=\'\'"><span style="font-size:14px">'+(icons[f.ext]||'📄')+'</span><span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+f.name+'</span><span style="font-size:11px;color:var(--text-muted)">'+size+'</span></div>'
+    }).join('');
+    $('#file-count').textContent=files.length+' 个音频';
+  }catch(err){el.innerHTML='<div style="padding:12px;color:var(--red);font-size:12px">'+err.message+'</div>'}
+}
+
+function previewAudio(path){
+  const audio=$('#audio-preview');
+  if(!audio){return}
+  audio.src='/api/v1/audio/'+encodeURIComponent(path);
+  audio.style.display='block';
+  audio.play().catch(()=>{});
 }
 
 function selectedDataset(){return state.selectedValues['dataset-type']==='existing'?(state.selectedValues['existing-dataset']||''):($('#dataset').value.trim()||'')}
@@ -488,7 +513,7 @@ $('#upload-zone').addEventListener('dragleave',()=>$('#upload-zone').classList.r
 $('#upload-zone').addEventListener('drop',e=>{e.preventDefault();$('#upload-zone').classList.remove('dragover');handleFiles(e.dataTransfer.files)});
 $('#file-input').addEventListener('change',e=>handleFiles(e.target.files));
 
-async function handleFiles(files){const filesList=[...files],dataset=selectedDataset()||$('#dataset').value.trim();if(!filesList.length)return;state.uploading=true;notice('');let allOk=true;for(const file of filesList){const row=document.createElement('div');row.className='upload-row';const name=document.createElement('strong');name.textContent=file.name;const bar=document.createElement('div');bar.className='bar';bar.innerHTML='<i></i><b>0%</b>';const status=document.createElement('span');status.className='upload-status';status.textContent='上传中';status.style.cssText='font-size:11px;color:var(--text-muted);white-space:nowrap';row.append(name,bar,status);$('#uploads').append(row);try{await uploadFile(file,dataset,row)}catch(err){status.textContent=err.message;status.style.color='var(--red)';allOk=false}}state.uploading=false;if(allOk){const tip=$('#upload-tip');tip.textContent='✅ 已上传 '+filesList.length+' 个文件';tip.style.display='';setTimeout(()=>tip.style.display='none',5000)}}
+async function handleFiles(files){const filesList=[...files],dataset=selectedDataset()||$('#dataset').value.trim();if(!filesList.length)return;state.uploading=true;notice('');let allOk=true;for(const file of filesList){const row=document.createElement('div');row.className='upload-row';const name=document.createElement('strong');name.textContent=file.name;const bar=document.createElement('div');bar.className='bar';bar.innerHTML='<i></i><b>0%</b>';const status=document.createElement('span');status.className='upload-status';status.textContent='上传中';status.style.cssText='font-size:11px;color:var(--text-muted);white-space:nowrap';row.append(name,bar,status);$('#uploads').append(row);try{await uploadFile(file,dataset,row)}catch(err){status.textContent=err.message;status.style.color='var(--red)';allOk=false}}state.uploading=false;if(allOk){const tip=$('#upload-tip');tip.textContent='✅ 已上传 '+filesList.length+' 个文件';tip.style.display='';setTimeout(()=>tip.style.display='none',5000);if(dataset)loadFiles(dataset)}}
 
 const fmt=s=>{s=Math.max(0,Math.round(Number(s)||0));return[Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(x=>String(x).padStart(2,'0')).join(':')};
 
