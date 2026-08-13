@@ -227,6 +227,38 @@ def _cleanup_uploads() -> int:
     return removed
 
 
+@app.post("/api/v1/uploads/direct", status_code=201)
+async def upload_audio_file(request: Request) -> dict[str, Any]:
+    content_type = request.headers.get("content-type", "")
+    if "multipart/form-data" not in content_type:
+        raise HTTPException(400, "需要 multipart/form-data")
+    form = await request.form()
+    dataset_name = form.get("dataset", "")
+    audio_file = form.get("file")
+    if not audio_file or not hasattr(audio_file, "read"):
+        raise HTTPException(400, "缺少文件")
+    try:
+        dataset_name = validate_model_name(str(dataset_name))
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    filename = Path(getattr(audio_file, "filename", "")).name
+    if not filename or Path(filename).suffix.lower() not in {".wav", ".flac", ".mp3", ".ogg", ".m4a", ".aac"}:
+        raise HTTPException(400, "文件名无效或格式不支持")
+    data = await audio_file.read()
+    size = len(data)
+    if size <= 0 or size > MAX_UPLOAD_SIZE:
+        raise HTTPException(400, "文件大小无效")
+    free = shutil.disk_usage(UPLOADS_DIR.parent).free
+    if free < size:
+        raise HTTPException(507, "磁盘剩余空间不足")
+    dataset_dir = TRAINING_AUDIO_DIR / dataset_name
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    destination = dataset_dir / filename
+    digest = hashlib.sha256(data)
+    destination.write_bytes(data)
+    return {"dataset": dataset_name, "filename": filename, "size": size, "sha256": digest.hexdigest()}
+
+
 @app.post("/api/v1/uploads", status_code=201)
 async def begin_upload(request: Request) -> dict[str, Any]:
     _cleanup_uploads()

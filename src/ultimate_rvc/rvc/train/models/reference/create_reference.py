@@ -3,7 +3,10 @@ import logging
 import numpy as np
 
 import torch
-from transformers import HubertModel
+try:
+    from transformers import HubertModel
+except ImportError:
+    from transformers import AutoModel as HubertModel
 
 import librosa
 
