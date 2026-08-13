@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -134,6 +135,31 @@ def test_resume_upload_creates_versions_on_stable_handle(
 )
 def test_quick_tunnel_url_parser(text: str, expected: str | None) -> None:
     assert load_launcher().parse_tunnel_url([text]) == expected
+
+
+def test_wait_for_server_accepts_public_health_without_business_auth(monkeypatch) -> None:
+    launcher = load_launcher()
+    requested: list[str] = []
+
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+    class Opener:
+        def open(self, url, timeout):
+            requested.append(url)
+            return Response()
+
+    monkeypatch.setattr(launcher.urllib.request, "build_opener", lambda *_: Opener())
+    with patch.object(launcher.urllib.request, "ProxyHandler", return_value=None):
+        launcher.wait_for_server(7860)
+
+    assert requested == ["http://127.0.0.1:7860/healthz"]
 
 
 def test_cloudflared_checksum_mismatch_is_rejected(tmp_path: Path, monkeypatch) -> None:
