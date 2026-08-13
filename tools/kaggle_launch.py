@@ -58,14 +58,36 @@ def stream(process: subprocess.Popen[str], lines: list[str]) -> None:
 
 
 def wait_for_server(port: int = 7860) -> None:
+    """Block until the control console can serve both health and business requests.
+
+    `/healthz` 200 alone is not enough: FastAPI may answer health probes before
+    the model-loading side of the app is ready, leaving the front-end unable to
+    load GPU info. We additionally probe `/api/v1/options`; any HTTP response
+    other than 5xx / connection error proves the app routing stack is live.
+    """
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    health_ready = False
     for _ in range(60):
         try:
             with opener.open(f"http://127.0.0.1:{port}/healthz", timeout=3) as response:
                 if response.status == 200:
+                    health_ready = True
+        except Exception:
+            time.sleep(1)
+            continue
+        if not health_ready:
+            time.sleep(1)
+            continue
+        try:
+            with opener.open(
+                f"http://127.0.0.1:{port}/api/v1/options", timeout=3
+            ) as response:
+                if response.status < 500:
                     return
         except Exception:
             time.sleep(1)
+            continue
+        time.sleep(1)
     raise RuntimeError("RVC control console did not become ready within 60 seconds")
 
 
