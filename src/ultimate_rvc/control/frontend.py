@@ -316,7 +316,10 @@ footer a:hover{color:var(--accent)}
             <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">⚡</span><span class="st">GPU</span><span class="sa"></span></div>
               <div class="sel-dd"><div class="sel-opt selected" onclick="selPick(this,'extraction-device')" data-value="GPU"><span class="oi">⚡</span><span class="ol">GPU</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'extraction-device')" data-value="Automatic"><span class="oi">🤖</span><span class="ol">自动</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'extraction-device')" data-value="CPU"><span class="oi">💻</span><span class="ol">CPU</span><span class="oc">✓</span></div></div></div>
           </div>
-          <div class="field"><div class="field-label">GPU ID（逗号分隔）</div><input class="field-input" id="extraction-gpus" value="0" placeholder="0,1,2..."></div>
+          <div class="field"><div class="field-label">GPU 选择</div>
+            <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">⚡</span><span class="st">选择 GPU...</span><span class="sa"></span></div>
+              <div class="sel-dd" id="extraction-gpu-options"></div></div>
+            <input type="hidden" id="extraction-gpus" value="0"></div>
         </div>
       </div>
     </div>
@@ -401,7 +404,10 @@ footer a:hover{color:var(--accent)}
             <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">⚡</span><span class="st">GPU</span><span class="sa"></span></div>
               <div class="sel-dd"><div class="sel-opt selected" onclick="selPick(this,'training-device')" data-value="GPU"><span class="oi">⚡</span><span class="ol">GPU</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'training-device')" data-value="Automatic"><span class="oi">🤖</span><span class="ol">自动</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'training-device')" data-value="CPU"><span class="oi">💻</span><span class="ol">CPU</span><span class="oc">✓</span></div></div></div>
           </div>
-          <div class="field"><div class="field-label">GPU ID（逗号分隔）</div><input class="field-input" id="training-gpus" value="0" placeholder="0,1,2..."></div>
+          <div class="field"><div class="field-label">GPU 选择</div>
+            <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">⚡</span><span class="st">选择 GPU...</span><span class="sa"></span></div>
+              <div class="sel-dd" id="training-gpu-options"></div></div>
+            <input type="hidden" id="training-gpus" value="0"></div>
           <div class="field"><div class="field-label">训练精度</div>
             <div class="sel"><div class="sel-btn" onclick="selToggle(this)"><span class="si">🔢</span><span class="st">fp32</span><span class="sa"></span></div>
               <div class="sel-dd"><div class="sel-opt selected" onclick="selPick(this,'precision')" data-value="fp32"><span class="oi">🔢</span><span class="ol">fp32</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'precision')" data-value="fp16"><span class="oi">⚡</span><span class="ol">fp16</span><span class="oc">✓</span></div><div class="sel-sep"></div><div class="sel-opt" onclick="selPick(this,'precision')" data-value="bf16"><span class="oi">🔬</span><span class="ol">bf16</span><span class="oc">✓</span></div></div></div>
@@ -445,7 +451,7 @@ footer a:hover{color:var(--accent)}
 <footer><a href="https://github.com/lingrana/rvc_train_kaggle" target="_blank">© 2026 lingran · 用心打造每一个项目</a></footer>
 
 <script>
-const state={etag:'',timer:null,failures:0,lastJobs:[],uploading:false,selectedValues:{}};
+const state={etag:'',timer:null,failures:0,lastJobs:[],uploading:false,selectedValues:{},gpus:[]};
 const $=s=>document.querySelector(s);
 const text=(el,v)=>{if(el)el.textContent=v};
 function notice(msg){const el=$('#notice');text(el,msg);el.classList.toggle('show',!!msg)}
@@ -461,7 +467,7 @@ function toggleSwitch(el){el.classList.toggle('on')}
 function selToggle(el){const dd=el.nextElementSibling;document.querySelectorAll('.sel-dd.open').forEach(d=>{if(d!==dd)d.classList.remove('open')});document.querySelectorAll('.sel-btn.open').forEach(c=>{if(c!==el)c.classList.remove('open')});el.classList.toggle('open');dd.classList.toggle('open')}
 function selPick(opt,fieldId){const wrap=opt.closest('.sel'),btn=wrap.querySelector('.sel-btn');btn.querySelector('.st').textContent=opt.querySelector('.ol').textContent;btn.querySelector('.si').textContent=opt.querySelector('.oi').textContent;wrap.querySelectorAll('.sel-opt').forEach(o=>o.classList.remove('selected'));opt.classList.add('selected');btn.classList.remove('open');wrap.querySelector('.sel-dd').classList.remove('open');if(fieldId)state.selectedValues[fieldId]=opt.dataset.value;onFieldChange(fieldId,opt.dataset.value)}
 function selFilter(input){const q=input.value.toLowerCase();input.nextElementSibling.querySelectorAll('.sel-opt').forEach(o=>{o.style.display=o.querySelector('.ol').textContent.toLowerCase().includes(q)?'':'none'})}
-function selMulti(opt){opt.classList.toggle('selected');const count=opt.closest('.sel').querySelectorAll('.sel-opt.selected').length;opt.closest('.sel').querySelector('.sel-btn').querySelector('.st').textContent=count+' 个已选'}
+function selMulti(opt){opt.classList.toggle('selected');const wrap=opt.closest('.sel');const selected=[...wrap.querySelectorAll('.sel-opt.selected')].map(o=>o.dataset.value);const count=selected.length;wrap.querySelector('.sel-btn').querySelector('.st').textContent=count?selected.map(id=>{const g=state.gpus.find(x=>String(x.id)===id);return g?'GPU '+id+' ('+g.name+')':'GPU '+id}).join(', '):'选择 GPU...';const hidden=wrap.parentElement.querySelector('input[type=hidden]');if(hidden)hidden.value=selected.join(',')}
 
 document.addEventListener('click',e=>{if(!e.target.closest('.sel')){document.querySelectorAll('.sel-dd.open').forEach(d=>d.classList.remove('open'));document.querySelectorAll('.sel-btn.open').forEach(c=>c.classList.remove('open'))}});
 
@@ -533,7 +539,9 @@ function renderSideHistory(completed){const el=$('#side-history');if(!completed.
 
 async function poll(){clearTimeout(state.timer);try{const headers={};if(state.etag)headers['If-None-Match']=state.etag;const r=await fetch('/api/v1/jobs',{cache:'no-store',headers});if(r.status===401){$('#login').classList.remove('hidden');return}if(r.status!==304){if(!r.ok)throw new Error();state.etag=r.headers.get('ETag')||'';const d=await r.json();renderJobs(d.jobs||[])}state.failures=0;notice('')}catch{state.failures++;if(state.failures>=3)notice('控制服务连接中断，正在自动重试')}state.timer=setTimeout(poll,document.hidden?10000:2500)}
 
-async function loadOptions(){try{const d=await(await api('/api/v1/options')).json();const dd=$('#dataset-options');dd.innerHTML='';if(d.datasets&&d.datasets.length){d.datasets.forEach(name=>{const opt=document.createElement('div');opt.className='sel-opt';opt.dataset.value=name;opt.onclick=function(){selPick(this,'existing-dataset')};opt.innerHTML='<span class="oi">🎵</span><span class="ol">'+name+'</span><span class="oc">✓</span>';dd.append(opt)});const sep=document.createElement('div');sep.className='sel-sep';dd.append(sep)}else{const opt=document.createElement('div');opt.className='sel-opt';opt.innerHTML='<span class="ol" style="color:var(--text-muted)">暂无数据集</span>';dd.append(opt)}const placeholder=document.createElement('div');placeholder.className='sel-opt';placeholder.innerHTML='<span class="ol" style="color:var(--text-muted)">选择现有数据集...</span>';dd.append(placeholder)}catch(err){notice(err.message)}}
+async function loadOptions(){try{const d=await(await api('/api/v1/options')).json();const dd=$('#dataset-options');dd.innerHTML='';if(d.datasets&&d.datasets.length){d.datasets.forEach(name=>{const opt=document.createElement('div');opt.className='sel-opt';opt.dataset.value=name;opt.onclick=function(){selPick(this,'existing-dataset')};opt.innerHTML='<span class="oi">🎵</span><span class="ol">'+name+'</span><span class="oc">✓</span>';dd.append(opt)});const sep=document.createElement('div');sep.className='sel-sep';dd.append(sep)}else{const opt=document.createElement('div');opt.className='sel-opt';opt.innerHTML='<span class="ol" style="color:var(--text-muted)">暂无数据集</span>';dd.append(opt)}const placeholder=document.createElement('div');placeholder.className='sel-opt';placeholder.innerHTML='<span class="ol" style="color:var(--text-muted)">选择现有数据集...</span>';dd.append(placeholder);loadGpus(d.gpus||[])}catch(err){notice(err.message)}}
+
+function loadGpus(gpus){state.gpus=gpus;['extraction-gpu-options','training-gpu-options'].forEach(id=>{const dd=$('#'+id);if(!dd)return;dd.innerHTML='';dd.closest('.sel').classList.add('multi');if(!gpus.length){dd.innerHTML='<div class="sel-opt"><span class="ol" style="color:var(--text-muted)">未检测到 GPU</span></div>';return}gpus.forEach(g=>{const opt=document.createElement('div');opt.className='sel-opt';opt.dataset.value=String(g.id);opt.onclick=function(){selMulti(this)};opt.innerHTML='<span class="oi">⚡</span><span class="ol">GPU '+g.id+' — '+g.name+'</span><span class="oc" style="font-size:10px;color:var(--text-muted)">'+Math.round(g.memory_mb)+' MB</span>';dd.append(opt)});const first=dd.querySelector('.sel-opt');if(first){first.click()}})}
 
 $('#login-form').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/v1/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('#user').value,password:$('#password').value})});$('#login').classList.add('hidden');text($('#login-error'),'');poll();loadOptions()}catch(err){text($('#login-error'),err.message)}});
 $('#logout').onclick=async()=>{await fetch('/api/v1/auth/logout',{method:'POST'});$('#login').classList.remove('hidden')};

@@ -144,7 +144,25 @@ def options() -> dict[str, Any]:
     datasets = []
     if TRAINING_AUDIO_DIR.is_dir():
         datasets = sorted(path.name for path in TRAINING_AUDIO_DIR.iterdir() if path.is_dir())
-    return {"datasets": datasets, "part_size": PART_SIZE}
+    gpus = _detect_gpus()
+    return {"datasets": datasets, "part_size": PART_SIZE, "gpus": gpus}
+
+
+def _detect_gpus() -> list[dict[str, Any]]:
+    gpus: list[dict[str, Any]] = []
+    try:
+        import subprocess, re
+        out = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=index,name,memory.total", "--format=csv,noheader,nounits"],
+            timeout=5, text=True, stderr=subprocess.DEVNULL
+        )
+        for line in out.strip().splitlines():
+            parts = [x.strip() for x in line.split(",")]
+            if len(parts) >= 3:
+                gpus.append({"id": int(parts[0]), "name": parts[1], "memory_mb": int(parts[2])})
+    except Exception:
+        pass
+    return gpus
 
 
 @app.get("/api/v1/datasets/{name}/files")
