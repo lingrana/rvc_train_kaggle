@@ -112,31 +112,32 @@ def main() -> None:
     control = start_control()
     wait_for_server(7860, "RVC control console")
 
-    gradio = subprocess.Popen(
-        [
-            sys.executable,
-            "-u",
-            "src/ultimate_rvc/web/main.py",
-            "--listen",
-            "--listen-host",
-            "127.0.0.1",
-            "--listen-port",
-            "7861",
-            "--auth-user",
-            username,
-            "--auth-password",
-            password,
-        ],
-        cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        env=environment,
-    )
-    processes.append(gradio)
-    threading.Thread(target=stream, args=(gradio, []), daemon=True).start()
-    wait_for_server(7861, "RVC Gradio fallback")
+    # Gradio 备用界面已禁用（保留代码，恢复时取消以下注释）
+    # gradio = subprocess.Popen(
+    #     [
+    #         sys.executable,
+    #         "-u",
+    #         "src/ultimate_rvc/web/main.py",
+    #         "--listen",
+    #         "--listen-host",
+    #         "127.0.0.1",
+    #         "--listen-port",
+    #         "7861",
+    #         "--auth-user",
+    #         username,
+    #         "--auth-password",
+    #         password,
+    #     ],
+    #     cwd=ROOT,
+    #     stdout=subprocess.PIPE,
+    #     stderr=subprocess.STDOUT,
+    #     text=True,
+    #     bufsize=1,
+    #     env=environment,
+    # )
+    # processes.append(gradio)
+    # threading.Thread(target=stream, args=(gradio, []), daemon=True).start()
+    # wait_for_server(7861, "RVC Gradio fallback")
 
     cloudflared = ROOT / "cloudflared-linux-amd64"
     tunnel = subprocess.Popen(
@@ -165,7 +166,7 @@ def main() -> None:
     print(f"训练控制台: {url}")
     print(f"用户名: {username}")
     print(f"密码: {password}")
-    print("Gradio 备用界面仅监听本机: http://127.0.0.1:7861")
+    # print("Gradio 备用界面仅监听本机: http://127.0.0.1:7861")  # 已禁用 Gradio
     print("=" * 60 + "\n")
     while not shutting_down:
         exit_code = control.wait()
