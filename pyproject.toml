@@ -18,6 +18,7 @@ dependencies = [
 
   # Networking
   "requests==2.32.5",
+  "kagglehub==1.0.2",
   "yt_dlp[default]==2025.11.12",
   "nodejs-wheel-binaries==24.12.0",
   "wget==3.2",

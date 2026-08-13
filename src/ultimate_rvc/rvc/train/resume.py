@@ -5,10 +5,9 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import time
-import urllib.parse
 from pathlib import Path
 
+from ultimate_rvc.kaggle_auth import kaggle_username
 from ultimate_rvc.rvc.train.delivery import atomic_json_dump, sha256_file
 
 
@@ -86,11 +85,10 @@ def restore_resume_snapshot(snapshot_dir: Path, model_dir: Path) -> int:
 
 def sync_resume_snapshot(model_dir: Path) -> str | None:
     """Publish the compact snapshot as a stable private Kaggle Dataset version."""
-    import requests
+    import kagglehub
 
-    username = os.environ.get("KAGGLE_USERNAME")
-    key = os.environ.get("KAGGLE_KEY")
-    if not username or not key:
+    username = kaggle_username(kagglehub)
+    if not username:
         return None
     snapshot = model_dir / "resume_state"
     manifest = json.loads((snapshot / "resume_manifest.json").read_text("utf-8"))
@@ -98,45 +96,15 @@ def sync_resume_snapshot(model_dir: Path) -> str | None:
         char.lower() if char.isalnum() else "-" for char in model_dir.name
     ).strip("-")
     slug = f"{slug_base[:42]}-resume"
-    auth = (username, key)
-    resources = []
-    for path in sorted(snapshot.iterdir()):
-        if not path.is_file():
-            continue
-        with path.open("rb") as file:
-            response = requests.post(
-                "https://www.kaggle.com/api/v1/datasets/new/upload/file"
-                f"?fileName={urllib.parse.quote(path.name)}",
-                files={"file": (path.name, file)},
-                auth=auth,
-                timeout=600,
-            )
-        response.raise_for_status()
-        resources.append({"token": response.json()["token"]})
-    view = requests.get(
-        f"https://www.kaggle.com/api/v1/datasets/view/{username}/{slug}",
-        auth=auth,
-        timeout=60,
-    )
-    common = {
-        "ownerSlug": username,
-        "slug": slug,
-        "title": f"RVC {model_dir.name} resume",
-        "subtitle": "Private RVC cross-session training checkpoint",
-        "description": f"Latest resume state at epoch {manifest.get('epoch', 0)}",
-        "isPrivate": True,
-        "licenseName": "other",
-        "resources": resources,
-        "data": resources,
-    }
-    if view.status_code == 200:
-        endpoint = (
-            f"https://www.kaggle.com/api/v1/datasets/create/version/{username}/{slug}"
+    handle = f"{username}/{slug}"
+    try:
+        kagglehub.dataset_upload(
+            handle,
+            str(snapshot),
+            version_notes=f"epoch {manifest.get('epoch', 0)}",
         )
-        common["versionNotes"] = f"epoch {manifest.get('epoch', 0)} at {int(time.time())}"
-    else:
-        endpoint = "https://www.kaggle.com/api/v1/datasets/create/new"
-        common.update({"keywords": [], "collaborators": [], "sources": []})
-    response = requests.post(endpoint, json=common, auth=auth, timeout=180)
-    response.raise_for_status()
-    return f"{username}/{slug}"
+    except Exception as error:
+        raise RuntimeError(
+            f"Kaggle resume upload failed ({type(error).__name__})"
+        ) from None
+    return handle

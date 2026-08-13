@@ -19,7 +19,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse
 
-from ultimate_rvc.common import AUDIO_DIR, TRAINING_MODELS_DIR
+from ultimate_rvc.common import AUDIO_DIR, TEMP_DIR, TRAINING_MODELS_DIR
 from ultimate_rvc.control.jobs import (
     UPLOADS_DIR,
     create_job,
@@ -42,6 +42,7 @@ LOGIN_ATTEMPTS = 8
 TRAINING_AUDIO_DIR = AUDIO_DIR / "training"
 app = FastAPI(title="RVC Training Control", docs_url=None, redoc_url=None)
 _login_failures: dict[str, deque[float]] = defaultdict(deque)
+_kaggle_setup_complete = False
 
 
 def _secret() -> bytes:
@@ -137,6 +138,64 @@ def logout(response: Response) -> dict[str, bool]:
 @app.get("/api/v1/session")
 def session() -> dict[str, bool]:
     return {"authenticated": True}
+
+
+@app.get("/api/v1/kaggle-auth")
+def kaggle_auth_status() -> dict[str, Any]:
+    return {
+        "setup_required": not _kaggle_setup_complete,
+        "configured": bool(os.environ.get("KAGGLE_API_TOKEN")),
+        "owner": os.environ.get("RVC_KAGGLE_USERNAME"),
+    }
+
+
+@app.post("/api/v1/kaggle-auth")
+async def configure_kaggle_auth(request: Request) -> dict[str, Any]:
+    """Validate a token and retain it only in this control-service process."""
+    global _kaggle_setup_complete
+    body = await request.json()
+    token = str(body.get("token", "")).strip()
+    if not token:
+        os.environ.pop("KAGGLE_API_TOKEN", None)
+        os.environ.pop("RVC_KAGGLE_USERNAME", None)
+        _kaggle_setup_complete = True
+        return {
+            "configured": False,
+            "warning": "未配置 Token：不能上传私有模型、保存跨 Session checkpoint 或恢复私有 Dataset。",
+        }
+    os.environ["KAGGLE_API_TOKEN"] = token
+    try:
+        import kagglehub
+
+        identity = kagglehub.whoami(verbose=False)
+        owner = str(identity.get("username", "")).strip()
+        if not owner:
+            raise RuntimeError("missing username")
+    except Exception as error:
+        os.environ.pop("KAGGLE_API_TOKEN", None)
+        os.environ.pop("RVC_KAGGLE_USERNAME", None)
+        raise HTTPException(
+            400, f"Kaggle API Token 验证失败 ({type(error).__name__})"
+        ) from None
+    os.environ["RVC_KAGGLE_USERNAME"] = owner
+    _kaggle_setup_complete = True
+    result: dict[str, Any] = {"configured": True, "owner": owner}
+    resume_handle = os.environ.get("RVC_RESUME_DATASET", "").strip()
+    if resume_handle:
+        try:
+            output_dir = TEMP_DIR / "resume_download"
+            downloaded = kagglehub.dataset_download(
+                resume_handle,
+                output_dir=str(output_dir),
+                force_download=True,
+            )
+            os.environ["RVC_RESUME_ROOT"] = str(downloaded)
+            result["resume_dataset"] = resume_handle
+        except Exception as error:
+            result["warning"] = (
+                f"Token 已启用，但恢复数据集下载失败 ({type(error).__name__})"
+            )
+    return result
 
 
 @app.get("/api/v1/options")

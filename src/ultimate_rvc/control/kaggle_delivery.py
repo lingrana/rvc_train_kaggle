@@ -3,25 +3,21 @@
 from __future__ import annotations
 
 import json
-import os
 import re
+import shutil
+import tempfile
 import time
-import urllib.parse
 from pathlib import Path
 from typing import Any
 
-import requests
-
 from ultimate_rvc.common import TRAINING_MODELS_DIR
+from ultimate_rvc.kaggle_auth import kaggle_username
 from ultimate_rvc.rvc.train.delivery import (
     atomic_json_dump,
     prepare_delivery_files,
     validate_delivery,
     validate_model_name,
 )
-
-
-KAGGLE_API = "https://www.kaggle.com/api/v1"
 
 
 def upload_model(model_name: str) -> dict[str, Any]:
@@ -34,9 +30,6 @@ def upload_model(model_name: str) -> dict[str, Any]:
             return {"errors": ["训练未完成"]}
     except (OSError, ValueError, TypeError):
         return {"errors": ["训练未完成"]}
-    username, key = os.environ.get("KAGGLE_USERNAME"), os.environ.get("KAGGLE_KEY")
-    if not username or not key:
-        return {"errors": ["未配置 KAGGLE_USERNAME/KAGGLE_KEY"]}
     try:
         files = prepare_delivery_files(model_dir, name)
         validate_delivery(model_dir, name)
@@ -49,32 +42,32 @@ def upload_model(model_name: str) -> dict[str, Any]:
             return cached
     except (OSError, ValueError, TypeError):
         pass
-    auth = (username, key)
-    resources = []
-    for path in files.values():
-        try:
-            with path.open("rb") as source:
-                response = requests.post(
-                    f"{KAGGLE_API}/datasets/new/upload/file?fileName={urllib.parse.quote(path.name)}",
-                    files={"file": (path.name, source)}, auth=auth, timeout=600,
-                )
-            response.raise_for_status()
-            resources.append({"token": response.json()["token"]})
-        except Exception as error:
-            return {"errors": [f"{path.name} 上传失败：{error}"]}
-    base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "rvc-model"
-    slug = f"{base[:40]}-{int(time.time())}"
-    payload = {
-        "ownerSlug": username, "slug": slug, "title": f"RVC {name}",
-        "subtitle": "RVC trained voice model", "description": f"RVC {name} pth/index/log",
-        "isPrivate": True, "licenseName": "other", "keywords": [],
-        "collaborators": [], "sources": [], "resources": resources, "data": resources,
-    }
     try:
-        response = requests.post(f"{KAGGLE_API}/datasets/create/new", json=payload, auth=auth, timeout=180)
-        response.raise_for_status()
+        import kagglehub
+
+        username = kaggle_username(kagglehub)
     except Exception as error:
-        return {"errors": [f"Kaggle Dataset 创建失败：{error}"]}
-    urls = {"kaggle": f"https://www.kaggle.com/datasets/{username}/{slug}", "kaggle_slug": f"{username}/{slug}"}
+        return {"errors": [f"Kaggle API Token 无效 ({type(error).__name__})"]}
+    if not username:
+        return {"errors": ["未配置 KAGGLE_API_TOKEN"]}
+    base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "rvc-model"
+    slug = f"rvc-{base[:36]}-{int(time.time())}"
+    handle = f"{username}/{slug}"
+    try:
+        with tempfile.TemporaryDirectory(prefix="rvc-delivery-") as temporary:
+            delivery_dir = Path(temporary)
+            for path in files.values():
+                shutil.copy2(path, delivery_dir / path.name)
+            kagglehub.dataset_upload(
+                handle,
+                str(delivery_dir),
+                version_notes=f"RVC {name} trained model",
+            )
+    except Exception as error:
+        return {"errors": [f"Kaggle Dataset 上传失败 ({type(error).__name__})"]}
+    urls = {
+        "kaggle": f"https://www.kaggle.com/datasets/{handle}",
+        "kaggle_slug": handle,
+    }
     atomic_json_dump(urls, cached_path)
     return urls

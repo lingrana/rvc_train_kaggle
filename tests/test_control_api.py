@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 
 import httpx
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import ultimate_rvc.control.app as control_app
 
@@ -27,6 +29,9 @@ class ControlApiTest(unittest.IsolatedAsyncioTestCase):
             RVC_CONTROL_PASSWORD=_TEST_PASSWORD,
             RVC_CONTROL_SECRET=_TEST_SECRET,
         )
+        os.environ.pop("KAGGLE_API_TOKEN", None)
+        os.environ.pop("RVC_KAGGLE_USERNAME", None)
+        control_app._kaggle_setup_complete = False
         transport = httpx.ASGITransport(app=control_app.app)
         self.client = httpx.AsyncClient(transport=transport, base_url="http://test")
 
@@ -34,7 +39,61 @@ class ControlApiTest(unittest.IsolatedAsyncioTestCase):
         await self.client.aclose()
         control_app.TRAINING_AUDIO_DIR = self.original_audio
         control_app.UPLOADS_DIR = self.original_uploads
+        os.environ.pop("KAGGLE_API_TOKEN", None)
+        os.environ.pop("RVC_KAGGLE_USERNAME", None)
+        os.environ.pop("RVC_RESUME_DATASET", None)
+        os.environ.pop("RVC_RESUME_ROOT", None)
+        control_app._kaggle_setup_complete = False
         self.temporary.cleanup()
+
+    async def _login(self) -> None:
+        response = await self.client.post(
+            "/api/v1/auth/login",
+            json={"username": _TEST_USER, "password": _TEST_PASSWORD},
+        )
+        self.assertEqual(response.status_code, 200)
+
+    async def test_kaggle_token_setup_can_be_skipped(self) -> None:
+        await self._login()
+        status = await self.client.get("/api/v1/kaggle-auth")
+        self.assertTrue(status.json()["setup_required"])
+
+        skipped = await self.client.post("/api/v1/kaggle-auth", json={"token": ""})
+
+        self.assertEqual(skipped.status_code, 200)
+        self.assertFalse(skipped.json()["configured"])
+        self.assertIn("不能上传私有模型", skipped.json()["warning"])
+        self.assertNotIn("KAGGLE_API_TOKEN", os.environ)
+        self.assertFalse((await self.client.get("/api/v1/kaggle-auth")).json()["setup_required"])
+
+    async def test_kaggle_token_is_validated_without_echoing_it(self) -> None:
+        await self._login()
+        token = "super-secret-access-token"
+        fake = SimpleNamespace(whoami=lambda **kwargs: {"username": "owner"})
+        with patch.dict("sys.modules", {"kagglehub": fake}):
+            response = await self.client.post(
+                "/api/v1/kaggle-auth", json={"token": token}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"configured": True, "owner": "owner"})
+        self.assertNotIn(token, response.text)
+        self.assertEqual(os.environ["KAGGLE_API_TOKEN"], token)
+
+    async def test_invalid_kaggle_token_is_removed_and_not_echoed(self) -> None:
+        await self._login()
+        token = "revoked-secret-token"
+        fake = SimpleNamespace(
+            whoami=lambda **kwargs: (_ for _ in ()).throw(RuntimeError(token))
+        )
+        with patch.dict("sys.modules", {"kagglehub": fake}):
+            response = await self.client.post(
+                "/api/v1/kaggle-auth", json={"token": token}
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertNotIn(token, response.text)
+        self.assertNotIn("KAGGLE_API_TOKEN", os.environ)
 
     async def test_auth_etag_and_resumable_upload(self) -> None:
         self.assertEqual((await self.client.get("/api/v1/jobs")).status_code, 401)

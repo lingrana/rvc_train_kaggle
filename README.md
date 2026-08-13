@@ -39,9 +39,14 @@
 | `URVC_MODELS_DIR` | 模型存储目录 | `./models` |
 | `URVC_CONFIG` | 加载的配置名称 | 默认配置 |
 | `RVC_WEB_PASSWORD` | WebUI 登录密码（Kaggle Secret） | 随机生成 |
-| `KAGGLE_USERNAME` | 私有 Dataset 上传账号（Kaggle Secret） | 无 |
-| `KAGGLE_KEY` | 私有 Dataset API Key（Kaggle Secret） | 无 |
 | `RVC_RESUME_DATASET` | 要恢复的私有状态数据集，如 `user/rvc-name-resume` | 无 |
+| `RVC_CONTROL_SECRET` | 可选的登录会话签名密钥（至少 32 字符） | 自动生成 |
+
+首次登录控制台时输入新版 Kaggle Access Token。后端使用官方
+`kagglehub==1.0.2` 验证 Token 并自动取得 Dataset owner，Token 只保留在当前
+控制服务进程中，不写入 Secrets 或磁盘。不输入或 Token 失效时仍可训练及从浏览器
+下载，但会禁用私有 Dataset 上传、跨 Session checkpoint 保存和恢复。控制台固定
+绑定本机 `127.0.0.1:7860`，公网入口由自动重启的 Cloudflare Quick Tunnel 提供。
 
 ## 项目结构
 
