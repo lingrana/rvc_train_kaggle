@@ -27,7 +27,6 @@ dependencies = [
   "scipy==1.16.3",
   "matplotlib==3.10.8",
   "tqdm==4.67.1",
-  "gradio==5.49.1",
   "fastapi==0.116.1",
   "uvicorn==0.35.0",
   "pandas-stubs==2.3.3.251201",
@@ -85,7 +84,6 @@ rocm = [
 
 [project.scripts]
 urvc = "ultimate_rvc.cli.main:app"
-urvc-web = "ultimate_rvc.web.main:app_wrapper"
 
 [tool.uv]
 environments = ["sys_platform == 'win32'", "sys_platform == 'linux'"]
@@ -210,7 +208,7 @@ section-order = [
   "pypresence",
 ]
 "validation" = ["pydantic"]
-"data-science" = ["numpy", "scipy", "matplotlib", "tqdm", "pandas", "gradio"]
+"data-science" = ["numpy", "scipy", "matplotlib", "tqdm", "pandas"]
 "machine-learning" = [
   "torch",
   "torchaudio",

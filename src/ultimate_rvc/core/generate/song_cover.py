@@ -5,7 +5,7 @@ using RVC.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import lazy_loader as lazy
 
@@ -71,8 +71,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     import yt_dlp
-
-    import gradio as gr
 
     import pedalboard
     import soundfile as sf
@@ -935,7 +933,7 @@ def run_pipeline(
     output_format: AudioExt = AudioExt.MP3,
     output_name: str | None = None,
     cookiefile: StrPath | None = None,
-    progress_bar: gr.Progress | None = None,
+    progress_bar: Any | None = None,
 ) -> tuple[Path, ...]:
     """
     Run the song cover generation pipeline.
@@ -1015,8 +1013,9 @@ def run_pipeline(
     cookiefile : StrPath, optional
         The path to a file containing cookies to use when downloading
         audio from Youtube.
-    progress_bar : gr.Progress, optional
-        Gradio progress bar to update.
+    progress_bar : callable, optional
+        A callable that accepts (percentage, desc=message) to update
+        progress.
 
     Returns
     -------

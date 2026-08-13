@@ -5,7 +5,7 @@ RVC-based TTS generation.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import lazy_loader as lazy
 
@@ -53,8 +53,6 @@ from ultimate_rvc.typing_extra import (
 if TYPE_CHECKING:
 
     import aiohttp
-
-    import gradio as gr
 
     import edge_tts
 
@@ -490,7 +488,7 @@ def run_pipeline(
     output_sr: int = 44100,
     output_format: AudioExt = AudioExt.MP3,
     output_name: str | None = None,
-    progress_bar: gr.Progress | None = None,
+    progress_bar: Any | None = None,
 ) -> tuple[Path, ...]:
     """
     Convert text to speech using a cascaded pipeline combining Edge TTS
@@ -591,8 +589,9 @@ def run_pipeline(
     output_name : str, optional
         The name of the mixed speech track.
 
-    progress_bar : gr.Progress, optional
-        Gradio progress bar to update.
+    progress_bar : callable, optional
+        A callable that accepts (percentage, desc=message) to update
+        progress.
 
     Returns
     -------

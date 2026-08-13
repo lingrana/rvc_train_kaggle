@@ -85,3 +85,17 @@ HRVC/
 ## 许可证
 
 MIT License - 基于 Ultimate RVC 修改
+
+### 新前端控制面板
+
+已将前端界面完全替换为 MiMo 风格控制面板：
+
+**文件**：`rvc_control.html`
+
+**使用方式**：
+1. 在 Kaggle Notebook 中运行 `rvc_train.ipynb` 完成环境准备
+2. 打开 `rvc_control.html` 文件（或上传到工作目录）
+3. 使用左侧训练步骤 + 右侧控制面板
+
+**注意**：实际训练仍通过 Gradio Web UI 进行（Cloudflare 地址），此 HTML 为最终结果预览和控制面板。
+

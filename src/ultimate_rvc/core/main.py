@@ -16,7 +16,6 @@ from rich import print as rprint
 from ultimate_rvc.common import VOICE_MODELS_DIR
 from ultimate_rvc.core.common import FLAG_FILE
 from ultimate_rvc.core.generate.song_cover import initialize_audio_separator
-from ultimate_rvc.core.manage.models import download_voice_model
 from ultimate_rvc.rvc.lib.tools.prerequisites_download import (
     prequisites_download_pipeline,
 )
@@ -26,6 +25,20 @@ if TYPE_CHECKING:
 
 else:
     static_sox = lazy.load("static_sox")
+
+
+def _download_and_extract_model(url: str, model_name: str) -> None:
+    """Download a zip file from a URL and extract it to VOICE_MODELS_DIR."""
+    import io
+    import zipfile
+    import urllib.request
+
+    dest = VOICE_MODELS_DIR / model_name
+    dest.mkdir(parents=True, exist_ok=True)
+    with urllib.request.urlopen(url, timeout=120) as resp:
+        data = resp.read()
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        zf.extractall(dest)
 
 
 def download_sample_models() -> None:
@@ -45,7 +58,7 @@ def download_sample_models() -> None:
         if not Path(VOICE_MODELS_DIR / model_name).is_dir():
             rprint(f"Downloading {model_name}...")
             try:
-                download_voice_model(model_url, model_name)
+                _download_and_extract_model(model_url, model_name)
             except Exception as e:  # noqa: BLE001
                 rprint(f"Failed to download {model_name}: {e}")
 

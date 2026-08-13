@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import lazy_loader as lazy
 
@@ -42,8 +42,6 @@ if TYPE_CHECKING:
 
     import requests
 
-    import gradio as gr
-
     from ultimate_rvc.typing_extra import Json, StrPath
 else:
     requests = lazy.load("requests")
@@ -59,11 +57,11 @@ TRAINING_AUDIO_DIR = AUDIO_DIR / "training"
 def display_progress(
     message: str,
     percentage: float | None = None,
-    progress_bar: gr.Progress | None = None,
+    progress_bar: Any | None = None,
 ) -> None:
     """
-    Display progress message and percentage in console and potentially
-    also Gradio progress bar.
+    Display progress message and percentage in console and optionally
+    update a progress bar callback.
 
     Parameters
     ----------
@@ -71,8 +69,8 @@ def display_progress(
         Message to display.
     percentage : float, optional
         Percentage to display.
-    progress_bar : gr.Progress, optional
-        The Gradio progress bar to update.
+    progress_bar : callable, optional
+        A callable that accepts (percentage, desc=message).
 
     """
     rprint(message)

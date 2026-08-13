@@ -1,4 +1,4 @@
-"""Launch the public control console, private Gradio fallback, and tunnel."""
+"""Launch the public control console and Cloudflare tunnel."""
 
 from __future__ import annotations
 
@@ -111,33 +111,6 @@ def main() -> None:
 
     control = start_control()
     wait_for_server(7860, "RVC control console")
-
-    # Gradio 备用界面已禁用（保留代码，恢复时取消以下注释）
-    # gradio = subprocess.Popen(
-    #     [
-    #         sys.executable,
-    #         "-u",
-    #         "src/ultimate_rvc/web/main.py",
-    #         "--listen",
-    #         "--listen-host",
-    #         "127.0.0.1",
-    #         "--listen-port",
-    #         "7861",
-    #         "--auth-user",
-    #         username,
-    #         "--auth-password",
-    #         password,
-    #     ],
-    #     cwd=ROOT,
-    #     stdout=subprocess.PIPE,
-    #     stderr=subprocess.STDOUT,
-    #     text=True,
-    #     bufsize=1,
-    #     env=environment,
-    # )
-    # processes.append(gradio)
-    # threading.Thread(target=stream, args=(gradio, []), daemon=True).start()
-    # wait_for_server(7861, "RVC Gradio fallback")
 
     cloudflared = ROOT / "cloudflared-linux-amd64"
     if not cloudflared.exists():
