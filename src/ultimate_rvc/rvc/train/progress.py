@@ -13,6 +13,8 @@ from ultimate_rvc.security import directory_lock
 
 PHASE_LABELS = {
     "starting": "正在启动训练",
+    "preprocessing": "正在预处理",
+    "extracting": "正在提取特征",
     "training": "正在训练",
     "indexing": "正在生成索引",
     "validating": "正在验证本地推理兼容性",

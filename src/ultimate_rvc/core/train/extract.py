@@ -118,7 +118,9 @@ def extract_features(
         combined_file_hash,
     )
     display_progress("[~] Extracting pitch features...")
-    extract.run_pitch_extraction(file_infos, devices, f0_method, cpu_cores)
+    extract.run_pitch_extraction(
+        file_infos, devices, f0_method, cpu_cores, str(model_path)
+    )
     display_progress("[~] Extracting audio embeddings...")
     extract.run_embedding_extraction(
         file_infos,
@@ -130,6 +132,7 @@ def extract_features(
             else None
         ),
         cpu_cores,
+        str(model_path),
     )
     # NOTE The lazy_import function does not work with the package below
     # so we import it here manually

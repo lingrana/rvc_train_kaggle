@@ -22,6 +22,7 @@ from ultimate_rvc.common import RVC_MODELS_DIR
 from ultimate_rvc.rvc.configs.config import Config
 from ultimate_rvc.rvc.lib.predictors.f0 import CREPE, FCPE, RMVPE
 from ultimate_rvc.rvc.lib.utils import load_audio_16k, load_embedding
+from ultimate_rvc.rvc.train.progress import update_progress
 from ultimate_rvc.rvc.train.utils import remove_sox_libmso6_from_ld_preload
 
 logger = logging.getLogger(__name__)
@@ -103,10 +104,13 @@ class FeatureInput:
 
 def process_files(files, f0_method, device):
     fe = FeatureInput(f0_method=f0_method, device=device)
+    processed = 0
     with tqdm.tqdm(total=len(files), leave=True) as pbar:
         for file_info in files:
             fe.process_file(file_info)
             pbar.update(1)
+            processed += 1
+    return processed
 
 
 def run_pitch_extraction(
@@ -114,6 +118,7 @@ def run_pitch_extraction(
     devices: list[str],
     f0_method: str,
     threads: int,
+    model_dir: str,
 ) -> None:
     devices_str = ", ".join(devices)
     logger.info(
@@ -124,6 +129,10 @@ def run_pitch_extraction(
     )
     start_time = time.time()
     remove_sox_libmso6_from_ld_preload()
+
+    total_files = sum(len(part) for part in files)
+    done_files = 0
+    last_report = 0.0
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=len(devices)) as executor:
         tasks = [
@@ -136,7 +145,19 @@ def run_pitch_extraction(
             for i in range(len(devices))
         ]
         for future in concurrent.futures.as_completed(tasks):
-            future.result()  # Properly waits and propagates exceptions
+            done_files += int(future.result())
+            now_time = time.time()
+            if total_files and (
+                now_time - last_report >= 0.5 or done_files == total_files
+            ):
+                last_report = now_time
+                update_progress(
+                    Path(model_dir),
+                    phase="extracting",
+                    percent=done_files * 50 / total_files,
+                    stage_detail=f"Pitch 提取 {done_files}/{total_files}",
+                    done=False,
+                )
 
     logger.info("Pitch extraction completed in %.2f seconds.", time.time() - start_time)
 
@@ -172,6 +193,7 @@ def process_file_embedding(
             futures = [executor.submit(worker, f) for f in files]
             for _ in concurrent.futures.as_completed(futures):
                 pbar.update(1)
+    return len(files)
 
 
 def run_embedding_extraction(
@@ -180,6 +202,7 @@ def run_embedding_extraction(
     embedder_model: str,
     embedder_model_custom: str | None,
     threads: int,
+    model_dir: str,
 ) -> None:
     devices_str = ", ".join(devices)
     logger.info(
@@ -188,6 +211,10 @@ def run_embedding_extraction(
         devices_str,
     )
     start_time = time.time()
+    total_files = sum(len(part) for part in files)
+    done_files = 0
+    last_report = 0.0
+
     with concurrent.futures.ProcessPoolExecutor(max_workers=len(devices)) as executor:
         tasks = [
             executor.submit(
@@ -202,7 +229,19 @@ def run_embedding_extraction(
             for i in range(len(devices))
         ]
         for future in concurrent.futures.as_completed(tasks):
-            future.result()  # Properly waits and propagates exceptions
+            done_files += int(future.result())
+            now_time = time.time()
+            if total_files and (
+                now_time - last_report >= 0.5 or done_files == total_files
+            ):
+                last_report = now_time
+                update_progress(
+                    Path(model_dir),
+                    phase="extracting",
+                    percent=50 + done_files * 50 / total_files,
+                    stage_detail=f"Embedding 提取 {done_files}/{total_files}",
+                    done=False,
+                )
     logger.info(
         "Embedding extraction completed in %.2f seconds.",
         time.time() - start_time,

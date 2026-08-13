@@ -28,6 +28,7 @@ import logging
 
 from ultimate_rvc.rvc.lib.utils import load_audio
 from ultimate_rvc.rvc.train.preprocess.slicer import Slicer
+from ultimate_rvc.rvc.train.progress import update_progress
 from ultimate_rvc.rvc.train.utils import remove_sox_libmso6_from_ld_preload
 from ultimate_rvc.typing_extra import AudioExt
 
@@ -393,10 +394,13 @@ def preprocess_training_set(
 
     # print(f"Number of files: {len(files)}")
     audio_length = []
+    total_files = len(files)
+    done_files = 0
+    last_report = 0.0
 
     remove_sox_libmso6_from_ld_preload()
     with (
-        tqdm(total=len(files)) as pbar,
+        tqdm(total=total_files) as pbar,
         concurrent.futures.ProcessPoolExecutor(max_workers=num_processes) as executor,
     ):
         futures = [
@@ -419,6 +423,19 @@ def preprocess_training_set(
         for future in concurrent.futures.as_completed(futures):
             audio_length.append(future.result())
             pbar.update(1)
+            done_files += 1
+            now_time = time.time()
+            if total_files and (
+                now_time - last_report >= 0.5 or done_files == total_files
+            ):
+                last_report = now_time
+                update_progress(
+                    Path(exp_dir),
+                    phase="preprocessing",
+                    percent=done_files * 100 / total_files,
+                    stage_detail=f"切片 {done_files}/{total_files}",
+                    done=False,
+                )
 
     audio_length = sum(audio_length)
     save_dataset_duration_and_sample_rate(
