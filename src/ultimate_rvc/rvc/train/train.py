@@ -270,7 +270,52 @@ def main(
         logger.warning("Training with CPU, this will take a long time.")
 
     def start() -> None:
-        """Start the training process with multi-GPU support or CPU."""
+        """Start the training process with multi-GPU support or CPU.
+
+        Mirrors the reference implementation: the requested GPU set is exposed
+        to children via CUDA_VISIBLE_DEVICES so rank == device index in the
+        remapped world, and a single GPU trains directly without DDP.
+        """
+        if device.type == "cuda":
+            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
+                str(gpu_idx) for gpu_idx in sorted(gpus)
+            )
+            logger.warning(
+                "Training GPUs %s -> CUDA_VISIBLE_DEVICES=%s",
+                sorted(gpus),
+                os.environ["CUDA_VISIBLE_DEVICES"],
+            )
+        single_gpu = device.type == "cuda" and len(gpus) == 1
+        if single_gpu:
+            run(
+                0,
+                1,
+                experiment_dir,
+                pretrain_g,
+                pretrain_d,
+                total_epoch,
+                save_every_weights,
+                config,
+                device,
+                0,
+                model_name,
+                sample_rate,
+                vocoder,
+                batch_size,
+                save_every_epoch,
+                save_only_latest,
+                overtraining_detector,
+                overtraining_threshold,
+                checkpointing,
+                cache_data_in_gpu,
+                global_gen_loss,
+                global_disc_loss,
+                train_dtype,
+                version,
+                f0_guidance,
+                use_ddp=False,
+            )
+            return
         children = []
         pid_data = {"process_pids": []}
         with pathlib.Path(config_save_path).open("r") as pid_file:
@@ -280,7 +325,7 @@ def main(
             except json.JSONDecodeError:
                 pass
         with pathlib.Path(config_save_path).open("w") as pid_file:
-            for rank, device_id in enumerate(gpus):
+            for rank in range(n_gpus):
                 subproc = mp.Process(
                     target=run,
                     args=(
@@ -293,7 +338,7 @@ def main(
                         save_every_weights,
                         config,
                         device,
-                        device_id,
+                        rank,
                         model_name,
                         sample_rate,
                         vocoder,
@@ -309,6 +354,7 @@ def main(
                         train_dtype,
                         version,
                         f0_guidance,
+                        True,
                     ),
                 )
                 children.append(subproc)
@@ -323,7 +369,7 @@ def main(
             if exit_code != 0:
                 logger.warning(
                     "Process running on device %s exited with code %s.",
-                    device_id,
+                    i,
                     exit_code,
                 )
                 if exit_code != cancel_signal:
@@ -405,6 +451,7 @@ def _run(
     train_dtype,
     version="v2",
     f0_guidance=True,
+    use_ddp=True,
 ):
     """
     Runs the training loop on a specific GPU or CPU.
@@ -437,12 +484,15 @@ def _run(
         writer_eval = None
 
     # Initialize distributed training environment for child node.
-    dist.init_process_group(
-        backend="gloo" if sys.platform == "win32" or device.type != "cuda" else "nccl",
-        init_method="env://",
-        world_size=n_gpus if device.type == "cuda" else 1,
-        rank=rank if device.type == "cuda" else 0,
-    )
+    # Aligned with the reference multi-GPU setup: always gloo (nccl can
+    # segfault on shared/cloud GPU boxes) with libuv explicitly disabled.
+    if use_ddp:
+        dist.init_process_group(
+            backend="gloo",
+            init_method="env://?use_libuv=False",
+            world_size=n_gpus,
+            rank=rank,
+        )
 
     torch.manual_seed(config.train.seed)
 
@@ -576,7 +626,7 @@ def _run(
     )
 
     # Wrap models with DDP for multi-gpu processing
-    if n_gpus > 1 and device.type == "cuda":
+    if use_ddp and device.type == "cuda":
         net_g = DDP(net_g, device_ids=[device_id])
         net_d = DDP(net_d, device_ids=[device_id])
 
