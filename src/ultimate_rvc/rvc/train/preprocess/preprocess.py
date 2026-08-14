@@ -439,11 +439,7 @@ def preprocess_training_set(
                 now_time - last_report >= 0.5 or done_files == total_files
             ):
                 last_report = now_time
-                percent = (
-                    100.0
-                    if done_files == total_files
-                    else max(0.1, done_files * 100 / total_files)
-                )
+                percent = max(0.1, min(99.9, done_files * 100 / total_files))
                 update_progress(
                     Path(exp_dir),
                     phase="preprocessing",

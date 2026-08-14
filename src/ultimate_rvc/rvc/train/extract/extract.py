@@ -119,7 +119,7 @@ def _watch_done(done_path: str, model_dir: str, total: int, base_pct: int, label
             update_progress(
                 Path(model_dir),
                 phase="extracting",
-                percent=min(100.0, base_pct + n * 50 / total),
+                percent=min(99.9, base_pct + n * 50 / total),
                 stage_detail=f"{label} {n}/{total}",
                 done=False,
             )
