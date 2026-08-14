@@ -23,7 +23,7 @@ class ControlFrontendTest(unittest.TestCase):
         self.assertIn('id="clean-strength" type="number"', HTML)
         self.assertIn("el.dataset.field==='detect-overtrain'", HTML)
         self.assertIn("$('#overtrain-threshold')", HTML)
-        self.assertIn("liveElapsed(p)", HTML)
+        self.assertIn("liveElapsed(p,", HTML)
         self.assertIn("liveElapsed(live", HTML)
         self.assertIn("selectModel('model'", HTML)
         self.assertIn("confirmDataset()", HTML)
