@@ -398,6 +398,7 @@ async def upload_direct(upload_id: str, request: Request) -> dict[str, Any]:
 
         received = 0
         digest = hashlib.sha256()
+        last_manifest_write = 0.0
         try:
             with temporary.open("wb") as output:
                 async for data in request.stream():
@@ -406,15 +407,18 @@ async def upload_direct(upload_id: str, request: Request) -> dict[str, Any]:
                         raise HTTPException(400, "上传文件超过声明大小")
                     output.write(data)
                     digest.update(data)
-                    async with async_directory_lock(manifest_lock, timeout=5):
-                        current = _manifest(upload_id)
-                        if current.get("status") != "uploading":
-                            raise HTTPException(409, "上传任务已结束")
-                        current.update(
-                            received=max(int(current.get("received", 0)), received),
-                            updated_at=time.time(),
-                        )
-                        atomic_json_dump(current, directory / "manifest.json")
+                    now = time.time()
+                    if received >= expected_size or now - last_manifest_write >= 0.5:
+                        async with async_directory_lock(manifest_lock, timeout=3):
+                            current = _manifest(upload_id)
+                            if current.get("status") != "uploading":
+                                raise HTTPException(409, "上传任务已结束")
+                            current.update(
+                                received=max(int(current.get("received", 0)), received),
+                                updated_at=now,
+                            )
+                            atomic_json_dump(current, directory / "manifest.json")
+                        last_manifest_write = now
             if received != expected_size:
                 raise HTTPException(400, "上传文件大小不匹配")
             async with async_directory_lock(manifest_lock, timeout=5):
@@ -449,14 +453,21 @@ async def upload_progress(upload_id: str, request: Request) -> dict[str, Any]:
     even when a reverse proxy buffers the entire request body."""
     directory = _upload_path(upload_id)
     body = await request.json()
-    async with async_directory_lock(_upload_manifest_lock(upload_id), timeout=5):
-        manifest = _manifest(upload_id)
-        if manifest.get("status") != "uploading":
-            return manifest
-        reported = min(int(body.get("received", 0)), int(manifest["size"]))
-        if reported > int(manifest.get("received", 0)):
+    manifest = _manifest(upload_id)
+    if manifest.get("status") != "uploading":
+        return manifest
+    reported = min(int(body.get("received", 0)), int(manifest["size"]))
+    if reported <= int(manifest.get("received", 0)):
+        return manifest
+    try:
+        async with async_directory_lock(_upload_manifest_lock(upload_id), timeout=3):
+            manifest = _manifest(upload_id)
+            if manifest.get("status") != "uploading":
+                return manifest
             manifest.update(received=reported, updated_at=time.time())
             atomic_json_dump(manifest, directory / "manifest.json")
+    except TimeoutError:
+        pass
     return manifest
 
 
