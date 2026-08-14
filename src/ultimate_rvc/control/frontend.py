@@ -602,7 +602,7 @@ function renderStageCard(){
     let icon,right;
     if(st.done){icon='✅';let t=st.finished_at?new Date(st.finished_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';const trainFull=key==='train'&&job&&job.created_at&&st.finished_at?(st.finished_at-job.created_at):null;right=(trainFull!=null?'已用 '+fmtClock(trainFull):(st.elapsed_seconds!=null?'已用 '+fmtClock(st.elapsed_seconds):'完成'))+(t?' · '+t:'')}
     else if(failed&&key===failKey){icon='❌';right='未完成 · '+(snap.phase==='failed'?'已失败':'已停止')}
-    else if(active===key){icon='⏳';let t=' · 已用 '+fmtClock(key==='train'?clickElapsed(job):snap.elapsed_seconds);let pct=Number(snap.percent||0).toFixed(1)+'%';if(key==='train'&&snap.total_epochs)right='第 '+(snap.epoch||0)+' / '+snap.total_epochs+' 轮'+t;else right=pct+t;if(snap.stage_detail)right+=' · '+snap.stage_detail}
+    else if(active===key){icon='⏳';let t=' · 已用 '+fmtClock(key==='train'?clickElapsed(job):snap.elapsed_seconds);let pct=Number(snap.percent||0).toFixed(1)+'%';right=pct+t;if(snap.stage_detail)right+=' · '+snap.stage_detail}
     else if(failed){icon='▫️';right='未开始'}
     else {icon='▫️';right='等待开始'}
     return '<div class="side-row"><span>步骤'+label+'</span><span style="color:var(--text-muted);font-weight:400;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+icon+' '+right+'</span></div>';
