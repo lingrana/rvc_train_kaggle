@@ -3,6 +3,7 @@ import glob
 import json
 import logging
 import os
+import traceback
 import warnings
 import pathlib
 import shutil
@@ -205,8 +206,25 @@ def main(
         logger.warning("No wav file found.")
 
     device = torch.device(device_type)
-    gpus = gpus or {0}
-    n_gpus = len(gpus)
+    gpus = set(gpus or {0})
+    if device.type == "cuda":
+        available_devices = torch.cuda.device_count()
+        if available_devices < 1:
+            device = torch.device("cpu")
+            gpus = set()
+        else:
+            filtered = {g for g in gpus if g < available_devices}
+            if not filtered:
+                filtered = {0}
+            if filtered != gpus:
+                logger.warning(
+                    "Requested GPUs %s exceed available devices (%d); using %s.",
+                    sorted(gpus),
+                    available_devices,
+                    sorted(filtered),
+                )
+            gpus = filtered
+    n_gpus = max(1, len(gpus))
 
     if device.type == "cpu":
         logger.warning("Training with CPU, this will take a long time.")
@@ -302,7 +320,22 @@ def main(
     start()
 
 
-def run(
+def run(*args: object, **kwargs: object) -> None:
+    """Subprocess entry point that surfaces child-process failures in the log.
+
+    Child processes crash with opaque exit codes (e.g. -11 SIGSEGV) that the
+    parent only summarizes as "One or more training processes failed". This
+    wrapper prints the full traceback to stdout so it lands in worker.log.
+    """
+    try:
+        _run(*args, **kwargs)  # type: ignore[arg-type]
+    except BaseException:
+        print("[RVC] 训练子进程异常（traceback 已写入日志）:")
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def _run(
     rank,
     n_gpus,
     experiment_dir,

@@ -148,6 +148,10 @@ _ERROR_HINTS = (
     "nccl",
     "error",
     "rank ",
+    "exited with code",
+    "segmentation",
+    "signal",
+    "crash",
 )
 
 

@@ -585,21 +585,24 @@ function renderStageCard(){
   if(!name){el.innerHTML='<div style="font-size:12px;color:var(--text-muted)">尚未选择模型</div>';return}
   const reg=state.registry[name]||{stages:{preprocess:{done:false},extract:{done:false},train:{done:false}},last_phase:''};
   const snap={...(state.progressSnap[name]||{})};
-  const job=state.lastJobs.find(j=>j.params&&j.params.model_name===name&&j.progress);
-  if(job){const live=job.progress;snap.phase=live.phase||snap.phase;snap.percent=live.percent;snap.epoch=live.epoch;snap.total_epochs=live.total_epochs;snap.loss_g=live.loss_g;snap.loss_d=live.loss_d;snap.elapsed_seconds=live.elapsed_seconds}
-  const stages=reg.stages||{},steps=[['preprocess','2 数据预处理'],['extract','3 特征提取'],['train','4 模型训练']],activeNames={preprocessing:'preprocess',extracting:'extract',training:'train',indexing:'train',validating:'train',uploading:'train'},active=activeNames[snap.phase||''];
+  const job=state.lastJobs.find(j=>j.params&&j.params.model_name===name);
+  if(job){const live=job.progress||{};snap.phase=live.phase||(job.phase==='queued'?'queued':snap.phase);snap.percent=live.percent;snap.epoch=live.epoch;snap.total_epochs=live.total_epochs;snap.loss_g=live.loss_g;snap.loss_d=live.loss_d;snap.best_epoch=live.best_epoch;snap.best_loss=live.best_loss;snap.error=live.error||snap.error;snap.elapsed_seconds=live.elapsed_seconds;if(snap.elapsed_seconds==null&&job.created_at)snap.elapsed_seconds=Date.now()/1000-job.created_at}
+  const stages=reg.stages||{},steps=[['preprocess','2 数据预处理'],['extract','3 特征提取'],['train','4 模型训练']];
+  const activeNames={queued:'preprocess',preprocessing:'preprocess',extracting:'extract',training:'train',indexing:'train',validating:'train',uploading:'train'};
+  const active=activeNames[snap.phase||''],failed=snap.phase==='failed'||snap.phase==='stopped';
   const rows=steps.map(([key,label])=>{
     const st=stages[key]||{};
-    let icon=st.done?'✅':(active===key?'⏳':'▫️');
+    let icon=st.done?'✅':(active===key?'⏳':(failed?'❌':'▫️'));
     let right;
     if(st.done){let t=st.finished_at?new Date(st.finished_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';right='已用 '+fmtClock(st.elapsed_seconds)+(t?' · '+t:'')}
     else if(active===key){let t=snap.elapsed_seconds!=null?' · 已用 '+fmtClock(snap.elapsed_seconds):'';let pct=Number(snap.percent||0).toFixed(1)+'%';if(key==='train'&&snap.total_epochs)right='第 '+(snap.epoch||0)+' / '+snap.total_epochs+' 轮'+t;else right=pct+t;if(snap.stage_detail)right+=' · '+snap.stage_detail}
+    else if(failed)right='未完成 · '+(snap.phase==='failed'?'已失败':'已停止');
     else right='等待开始';
     return '<div class="side-row"><span>步骤'+label+'</span><span style="color:var(--text-muted);font-weight:400;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+icon+' '+right+'</span></div>';
   }).join('');
   let extra='';
   const trainPhase=snap.phase==='training'||snap.phase==='indexing'||snap.phase==='validating'||snap.phase==='uploading';
-  if(trainPhase){extra='<div class="side-row"><span>训练轮次</span><span>'+(snap.epoch||0)+' / '+(snap.total_epochs||0)+'</span></div>'+(snap.loss_g!=null?'<div class="side-row"><span>损失 G · D</span><span>'+Number(snap.loss_g).toFixed(4)+' · '+Number(snap.loss_d).toFixed(4)+'</span></div>':'')}
+  if(trainPhase){extra='<div class="side-row"><span>训练轮次</span><span>'+(snap.epoch||0)+' / '+(snap.total_epochs||0)+'</span></div>'+(snap.best_epoch!=null?'<div class="side-row"><span>最佳一轮</span><span>第 '+snap.best_epoch+' 轮'+(snap.best_loss!=null?' · 损失 '+Number(snap.best_loss).toFixed(4):'')+'</span></div>':'')+(snap.loss_g!=null?'<div class="side-row"><span>损失 G · D</span><span>'+Number(snap.loss_g).toFixed(4)+' · '+Number(snap.loss_d).toFixed(4)+'</span></div>':'')}
   else if(snap.phase==='completed')extra='<div class="side-row"><span>状态</span><span style="color:var(--green)">✅ 训练完成</span></div>';
   else if(snap.phase==='failed'){const errorShown=String(snap.error||(job&&job.error)||'').replace(/</g,'&lt;').slice(0,400);extra='<div class="side-row"><span>状态</span><span style="color:var(--red)">❌ 训练失败</span></div>'+(errorShown?'<div style="font-size:11px;color:var(--red);margin-top:6px;word-break:break-all">'+errorShown+'</div>':'')}
   el.innerHTML='<div class="side-info">'+rows+extra+'</div>';
