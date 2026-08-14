@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -34,7 +35,7 @@ def preprocess(params: dict[str, Any]) -> None:
     model_dir = TRAINING_MODELS_DIR / params["model_name"]
     model_dir.mkdir(parents=True, exist_ok=True)
     update_progress(
-        model_dir, phase="preprocessing", percent=0, stage_detail="正在准备音频", done=False,
+        model_dir, phase="preprocessing", percent=0.1, stage_detail="正在准备音频", done=False,
     )
     started = time.time()
     preprocess_dataset(
@@ -62,7 +63,7 @@ def extract(params: dict[str, Any]) -> None:
 
     model_dir = TRAINING_MODELS_DIR / params["model_name"]
     update_progress(
-        model_dir, phase="extracting", percent=0, stage_detail="正在准备特征提取", done=False,
+        model_dir, phase="extracting", percent=0.1, stage_detail="正在准备特征提取", done=False,
     )
     started = time.time()
     extract_features(
@@ -139,11 +140,32 @@ def run(job_id: str) -> None:
         update_progress(
             model_dir,
             phase=initial_phase,
-            percent=0,
+            percent=0.1,
             stage_detail="正在准备运行环境…",
             done=False,
         )
-        ensure_models()
+        prepare_stop = threading.Event()
+
+        def _crawl_progress() -> None:
+            step = 0
+            while not prepare_stop.wait(2.0):
+                step += 1
+                try:
+                    update_progress(
+                        model_dir,
+                        phase=initial_phase,
+                        percent=min(5.0, 0.1 + step * 0.1),
+                        done=False,
+                    )
+                except Exception:
+                    pass
+
+        crawler = threading.Thread(target=_crawl_progress, daemon=True)
+        crawler.start()
+        try:
+            ensure_models()
+        finally:
+            prepare_stop.set()
         if job["type"] == "preprocess":
             update_job(job_id, stage="preprocessing")
             result = preprocess(params)

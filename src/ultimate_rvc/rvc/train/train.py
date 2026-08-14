@@ -900,7 +900,7 @@ def train_and_evaluate(
         data_iterator = enumerate(train_loader)
 
     epoch_recorder = EpochRecorder()
-with tqdm(total=len(train_loader), leave=False,
+    with tqdm(total=len(train_loader), leave=False,
               disable=True,
               desc=f"Epoch {epoch+1}") as pbar:
         for batch_idx, info in data_iterator:

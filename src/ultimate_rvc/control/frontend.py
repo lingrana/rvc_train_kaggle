@@ -252,7 +252,7 @@ footer a:hover{color:var(--accent)}
 
     <div class="section">
       <div class="section-header"><span class="section-num">02</span><span class="section-title">上传音频</span></div>
-      <div class="upload" id="upload-zone" onclick="$('#file-input').click()">
+      <div class="upload" id="upload-zone" onclick="pickFiles()">
         <div class="upload-icon">🎙️</div>
         <div class="upload-title">拖拽音频文件到此处，或点击选择</div>
         <div class="upload-hint">支持批量上传 · 单文件最大 2 GB</div>
@@ -570,7 +570,8 @@ $('#upload-zone').addEventListener('dragleave',()=>$('#upload-zone').classList.r
 $('#upload-zone').addEventListener('drop',e=>{e.preventDefault();$('#upload-zone').classList.remove('dragover');handleFiles(e.dataTransfer.files)});
 $('#file-input').addEventListener('change',e=>handleFiles(e.target.files));
 
-async function handleFiles(files){const filesList=[...files],dataset=selectedDataset()||$('#dataset').value.trim();if(!filesList.length)return;state.uploading=true;notice('');let allOk=true;for(const file of filesList){const row=document.createElement('div');row.className='upload-row';const name=document.createElement('strong');name.textContent=file.name;const bar=document.createElement('div');bar.className='bar';bar.innerHTML='<i></i>';const status=document.createElement('span');status.className='upload-status';status.textContent='上传中';status.style.cssText='font-size:11px;color:var(--text-muted);white-space:nowrap';row.append(name,bar,status);$('#uploads').append(row);try{await uploadFile(file,dataset,row)}catch(err){status.textContent=err.message;status.style.color='var(--red)';allOk=false}}state.uploading=false;if(allOk){const tip=$('#upload-tip');tip.textContent='✅ 已上传 '+filesList.length+' 个文件';tip.style.display='';setTimeout(()=>tip.style.display='none',5000);if(dataset)loadFiles(dataset)}}
+function pickFiles(){const dataset=selectedDataset()||$('#dataset').value.trim();if(!dataset){notice('请先确定数据集：新建需填写数据集名称，或选择现有数据集');$('#upload-tip').textContent='⚠ 请先确定数据集再上传音频';$('#upload-tip').style.display='';return}$('#file-input').click()}
+async function handleFiles(files){const filesList=[...files],dataset=selectedDataset()||$('#dataset').value.trim();if(!filesList.length)return;if(!dataset){notice('请先确定数据集：新建需填写数据集名称，或选择现有数据集');$('#upload-tip').textContent='⚠ 请先确定数据集再上传音频';$('#upload-tip').style.display='';return}state.uploading=true;notice('');let allOk=true;for(const file of filesList){const row=document.createElement('div');row.className='upload-row';const name=document.createElement('strong');name.textContent=file.name;const bar=document.createElement('div');bar.className='bar';bar.innerHTML='<i></i>';const status=document.createElement('span');status.className='upload-status';status.textContent='上传中';status.style.cssText='font-size:11px;color:var(--text-muted);white-space:nowrap';row.append(name,bar,status);$('#uploads').append(row);try{await uploadFile(file,dataset,row)}catch(err){status.textContent=err.message;status.style.color='var(--red)';allOk=false}}state.uploading=false;if(allOk){const tip=$('#upload-tip');tip.textContent='✅ 已上传 '+filesList.length+' 个文件';tip.style.display='';setTimeout(()=>tip.style.display='none',5000);if(dataset)loadFiles(dataset)}}
 
 const fmt=s=>{s=Math.max(0,Math.round(Number(s)||0));return[Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(x=>String(x).padStart(2,'0')).join(':')};
 
@@ -600,7 +601,7 @@ function renderStageCard(){
   const rows=steps.map(([key,label])=>{
     const st=stages[key]||{};
     let icon,right;
-    if(st.done){icon='✅';let t=st.finished_at?new Date(st.finished_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';const trainFull=key==='train'&&job&&job.created_at&&st.finished_at?(st.finished_at-job.created_at):null;right=(trainFull!=null?'已用 '+fmtClock(trainFull):(st.elapsed_seconds!=null?'已用 '+fmtClock(st.elapsed_seconds):'完成'))+(t?' · '+t:'')}
+    if(st.done){icon='✅';let t=st.finished_at?new Date(st.finished_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';const fromClick=job&&job.created_at&&st.finished_at?(st.finished_at-job.created_at):null;right=(fromClick!=null?'已用 '+fmtClock(fromClick):(st.elapsed_seconds!=null?'已用 '+fmtClock(st.elapsed_seconds):'完成'))+(t?' · '+t:'')}
     else if(failed&&key===failKey){icon='❌';right='未完成 · '+(snap.phase==='failed'?'已失败':'已停止')}
     else if(active===key){icon='⏳';let t=' · 已用 '+fmtClock(key==='train'?clickElapsed(job):snap.elapsed_seconds);let pct=Number(snap.percent||0).toFixed(1)+'%';right=pct+t;if(snap.stage_detail)right+=' · '+snap.stage_detail}
     else if(failed){icon='▫️';right='未开始'}
