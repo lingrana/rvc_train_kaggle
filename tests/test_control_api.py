@@ -21,11 +21,14 @@ _TEST_SECRET = secrets.token_urlsafe(32)
 class ControlFrontendTest(unittest.TestCase):
     def test_interactive_training_controls_are_wired(self) -> None:
         self.assertIn('id="clean-strength" type="number"', HTML)
-        self.assertIn('max="1" disabled', HTML)
-        self.assertIn("'clean-audio':'#clean-strength'", HTML)
-        self.assertIn("Math.floor(elapsed)*.1", HTML)
-        self.assertIn("setCurrentModel(dataset)", HTML)
-        self.assertIn("state.visualJob={id:null,kind,startedAt:Date.now()", HTML)
+        self.assertIn("el.dataset.field==='detect-overtrain'", HTML)
+        self.assertIn("$('#overtrain-threshold')", HTML)
+        self.assertIn("fmt(p.elapsed_seconds)", HTML)
+        self.assertIn("selectModel('model'", HTML)
+        self.assertIn("confirmDataset()", HTML)
+        self.assertIn('id="side-stage-card"', HTML)
+        self.assertIn("function renderStageCard()", HTML)
+        self.assertIn("/api/v1/datasets/confirm", HTML)
 
 
 class ControlApiTest(unittest.IsolatedAsyncioTestCase):
@@ -122,6 +125,32 @@ class ControlApiTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(downloads[0][0], ("owner/rvc-voice-resume",))
         self.assertTrue(downloads[0][1]["force_download"])
         self.assertIn("RVC_RESUME_ROOT", os.environ)
+
+    async def test_dataset_confirm_registers_and_appears_in_options(self) -> None:
+        await self._login()
+        with patch(
+            "ultimate_rvc.control.registry.REGISTRY_PATH",
+            Path(self.temporary.name) / "registry.json",
+        ):
+            response = await self.client.post(
+                "/api/v1/datasets/confirm", json={"name": "MyDataset"}
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["dataset"], "MyDataset")
+
+            options = await self.client.get("/api/v1/options")
+            self.assertEqual(options.status_code, 200)
+            body = options.json()
+            models = {item["name"]: item for item in body["models"]}
+            self.assertIn("MyDataset", models)
+            self.assertIn("stages", models["MyDataset"])
+            self.assertIn("preprocess", models["MyDataset"]["stages"])
+            self.assertIn("progress", body)
+
+            rejected = await self.client.post(
+                "/api/v1/datasets/confirm", json={"name": "bad/name"}
+            )
+            self.assertEqual(rejected.status_code, 400)
 
     async def test_invalid_kaggle_token_is_removed_and_not_echoed(self) -> None:
         await self._login()

@@ -27,6 +27,7 @@ from ultimate_rvc.control.jobs import (
     read_job,
     stop_job,
 )
+from ultimate_rvc.control.registry import register_dataset
 from ultimate_rvc.rvc.train.delivery import atomic_json_dump, delivery_files, validate_model_name
 from ultimate_rvc.rvc.train.progress import read_progress
 from ultimate_rvc.security import async_directory_lock, directory_lock
@@ -227,18 +228,63 @@ async def restore_training_history(request: Request) -> dict[str, str]:
     return {"dataset": handle, "status": "ready"}
 
 
+@app.post("/api/v1/datasets/confirm")
+async def confirm_dataset(request: Request) -> dict[str, Any]:
+    """Persist a confirmed dataset so it reappears as a selectable model."""
+    body = await request.json()
+    return _confirm_dataset(body.get("name", ""))
+
+
+def _confirm_dataset(name: str) -> dict[str, Any]:
+    try:
+        return register_dataset(str(name))
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+
+
 @app.get("/api/v1/options")
 def options() -> dict[str, Any]:
     datasets = []
     if TRAINING_AUDIO_DIR.is_dir():
         datasets = sorted(path.name for path in TRAINING_AUDIO_DIR.iterdir() if path.is_dir())
     gpus = _detect_gpus()
+    from ultimate_rvc.control.registry import read_registry
+
+    registered = read_registry()
+    model_dirs = set()
     models = []
     if TRAINING_MODELS_DIR.is_dir():
-        models = sorted(
-            path.name for path in TRAINING_MODELS_DIR.iterdir() if path.is_dir()
+        model_dirs = {path.name for path in TRAINING_MODELS_DIR.iterdir() if path.is_dir()}
+    for name in sorted(model_dirs | set(registered), key=str.casefold):
+        entry = registered.get(name)
+        models.append(
+            {
+                "name": name,
+                "dataset": name,
+                "stages": (entry or {}).get("stages", {}) if entry else {},
+                "last_phase": (entry or {}).get("last_phase", ""),
+                "created_at": (entry or {}).get("created_at", 0),
+            }
         )
-    return {"datasets": datasets, "models": models, "gpus": gpus}
+    progress = {}
+    for model in models:
+        progress_path = TRAINING_MODELS_DIR / model["name"] / "progress.json"
+        if progress_path.is_file():
+            snapshot = read_progress(progress_path)
+            progress[model["name"]] = {
+                "phase": snapshot.get("phase", ""),
+                "phase_label": snapshot.get("phase_label", ""),
+                "percent": snapshot.get("percent", 0),
+                "elapsed_seconds": snapshot.get("elapsed_seconds", 0),
+                "eta_seconds": snapshot.get("eta_seconds"),
+                "epoch": snapshot.get("epoch", 0),
+                "total_epochs": snapshot.get("total_epochs", 0),
+                "loss_g": snapshot.get("loss_g"),
+                "loss_d": snapshot.get("loss_d"),
+                "stage_detail": snapshot.get("stage_detail", ""),
+                "error": snapshot.get("error", ""),
+            }
+    return {"datasets": datasets, "models": models, "progress": progress, "gpus": gpus}
 
 
 def _detect_gpus() -> list[dict[str, Any]]:

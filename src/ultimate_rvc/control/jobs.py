@@ -88,6 +88,12 @@ def refresh_job(job: dict[str, Any]) -> dict[str, Any]:
             updated_at=time.time(),
         )
         atomic_json_dump(job, _job_path(str(job["id"])))
+        if job["phase"] == "failed":
+            log_path = JOBS_DIR / str(job["id"]) / "worker.log"
+            try:
+                job["log_tail"] = log_path.read_text("utf-8", errors="replace").splitlines()[-30:]
+            except OSError:
+                job["log_tail"] = []
     model_name = job.get("params", {}).get("model_name")
     if model_name:
         progress_path = TRAINING_MODELS_DIR / str(model_name) / "progress.json"

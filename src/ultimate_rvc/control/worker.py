@@ -27,6 +27,7 @@ from ultimate_rvc.typing_extra import (
 
 def preprocess(params: dict[str, Any]) -> None:
     from ultimate_rvc.common import TRAINING_MODELS_DIR
+    from ultimate_rvc.control.registry import mark_stage
     from ultimate_rvc.core.train.prepare import preprocess_dataset
     from ultimate_rvc.rvc.train.progress import update_progress
 
@@ -35,7 +36,7 @@ def preprocess(params: dict[str, Any]) -> None:
     update_progress(
         model_dir, phase="preprocessing", percent=0, stage_detail="正在准备音频", done=False,
     )
-
+    started = time.time()
     preprocess_dataset(
         params["model_name"], params["dataset"],
         TrainingSampleRate(int(params.get("sample_rate", 48000))),
@@ -46,6 +47,8 @@ def preprocess(params: dict[str, Any]) -> None:
         float(params.get("chunk_len", 3.0)), float(params.get("overlap_len", 0.3)),
         int(params.get("preprocess_cores", params.get("cpu_cores", 2))),
     )
+    elapsed = time.time() - started
+    mark_stage(params["model_name"], "preprocess", elapsed)
     update_progress(
         model_dir, phase="preprocessing", percent=100, stage_detail="预处理完成", done=False,
     )
@@ -53,6 +56,7 @@ def preprocess(params: dict[str, Any]) -> None:
 
 def extract(params: dict[str, Any]) -> None:
     from ultimate_rvc.common import TRAINING_MODELS_DIR
+    from ultimate_rvc.control.registry import mark_stage
     from ultimate_rvc.core.train.extract import extract_features
     from ultimate_rvc.rvc.train.progress import update_progress
 
@@ -60,7 +64,7 @@ def extract(params: dict[str, Any]) -> None:
     update_progress(
         model_dir, phase="extracting", percent=0, stage_detail="正在准备特征提取", done=False,
     )
-
+    started = time.time()
     extract_features(
         params["model_name"], F0Method(params.get("f0_method", "rmvpe")),
         EmbedderModel(params.get("embedder_model", "local-hubert-base")),
@@ -70,15 +74,19 @@ def extract(params: dict[str, Any]) -> None:
         DeviceType(params.get("extraction_device", params.get("device", "Automatic"))),
         set(params.get("extraction_gpu_ids", params.get("gpu_ids", []))) or None,
     )
+    elapsed = time.time() - started
+    mark_stage(params["model_name"], "extract", elapsed)
     update_progress(
         model_dir, phase="extracting", percent=100, stage_detail="特征提取完成", done=False,
     )
 
 
 def train(params: dict[str, Any]) -> Any:
+    from ultimate_rvc.control.registry import mark_stage
     from ultimate_rvc.core.train.train import run_training
 
-    return run_training(
+    started = time.time()
+    result = run_training(
         params["model_name"], RVCVersion(params.get("version", "v2")),
         bool(params.get("f0_guidance", True)),
         int(params.get("epochs", 300)), int(params.get("batch_size", 8)),
@@ -99,6 +107,8 @@ def train(params: dict[str, Any]) -> Any:
         bool(params.get("preload_dataset", False)),
         bool(params.get("reduce_memory_usage", False)),
     )
+    mark_stage(params["model_name"], "train", time.time() - started)
+    return result
 
 
 def ensure_models() -> None:
