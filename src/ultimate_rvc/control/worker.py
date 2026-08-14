@@ -34,9 +34,6 @@ def preprocess(params: dict[str, Any]) -> None:
 
     model_dir = TRAINING_MODELS_DIR / params["model_name"]
     model_dir.mkdir(parents=True, exist_ok=True)
-    update_progress(
-        model_dir, phase="preprocessing", percent=0.1, stage_detail="正在准备音频", done=False,
-    )
     started = time.time()
     preprocess_dataset(
         params["model_name"], params["dataset"],
@@ -62,9 +59,6 @@ def extract(params: dict[str, Any]) -> None:
     from ultimate_rvc.rvc.train.progress import update_progress
 
     model_dir = TRAINING_MODELS_DIR / params["model_name"]
-    update_progress(
-        model_dir, phase="extracting", percent=0.1, stage_detail="正在准备特征提取", done=False,
-    )
     started = time.time()
     extract_features(
         params["model_name"], F0Method(params.get("f0_method", "rmvpe")),
@@ -154,7 +148,7 @@ def run(job_id: str) -> None:
                     update_progress(
                         model_dir,
                         phase=initial_phase,
-                        percent=min(5.0, 0.1 + step * 0.1),
+                        percent=min(1.0, 0.1 + step * 0.1),
                         done=False,
                     )
                 except Exception:
