@@ -13,10 +13,7 @@ import wget
 import numpy as np
 
 from torch import nn
-try:
-    from transformers import HubertModel
-except ImportError:
-    from transformers import AutoModel as HubertModel
+from transformers.models.hubert.modeling_hubert import HubertModel
 
 import librosa
 import soundfile as sf

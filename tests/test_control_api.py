@@ -11,10 +11,21 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import ultimate_rvc.control.app as control_app
+from ultimate_rvc.control.frontend import HTML
 
 _TEST_USER = "test_user"
 _TEST_PASSWORD = secrets.token_urlsafe(16)
 _TEST_SECRET = secrets.token_urlsafe(32)
+
+
+class ControlFrontendTest(unittest.TestCase):
+    def test_interactive_training_controls_are_wired(self) -> None:
+        self.assertIn('id="clean-strength" type="number"', HTML)
+        self.assertIn('max="1" disabled', HTML)
+        self.assertIn("'clean-audio':'#clean-strength'", HTML)
+        self.assertIn("Math.floor(elapsed)*.1", HTML)
+        self.assertIn("setCurrentModel(dataset)", HTML)
+        self.assertIn("state.visualJob={id:null,kind,startedAt:Date.now()", HTML)
 
 
 class ControlApiTest(unittest.IsolatedAsyncioTestCase):
