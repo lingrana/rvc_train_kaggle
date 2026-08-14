@@ -145,6 +145,9 @@ def main(
 
     """
     remove_sox_libmso6_from_ld_preload()
+    import faulthandler
+
+    faulthandler.enable()
     experiment_dir = os.path.join(TRAINING_MODELS_DIR, model_name)
     config_save_path = os.path.join(experiment_dir, "config.json")
     stop_requested_path = os.path.join(experiment_dir, "stop_requested")
@@ -208,22 +211,59 @@ def main(
     device = torch.device(device_type)
     gpus = set(gpus or {0})
     if device.type == "cuda":
+        # Diagnostics: log what this process can actually see. On shared
+        # Kaggle boxes nvidia-smi may report cards that have no usable memory,
+        # or CUDA_VISIBLE_DEVICES may hide devices entirely.
+        try:
+            visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+            logger.warning(
+                "GPU self-check: CUDA_VISIBLE_DEVICES=%r device_count=%d",
+                visible,
+                torch.cuda.device_count(),
+            )
+            for gpu_idx in range(torch.cuda.device_count()):
+                try:
+                    free_mem, total_mem = torch.cuda.mem_get_info(gpu_idx)
+                    logger.warning(
+                        "  GPU %d: free=%d MiB total=%d MiB name=%s",
+                        gpu_idx,
+                        free_mem // (1024 * 1024),
+                        total_mem // (1024 * 1024),
+                        torch.cuda.get_device_name(gpu_idx),
+                    )
+                except Exception as gpu_error:  # noqa: BLE001
+                    logger.warning("  GPU %d: not usable (%s)", gpu_idx, gpu_error)
+        except Exception as check_error:  # noqa: BLE001
+            logger.warning("GPU self-check failed: %s", check_error)
         available_devices = torch.cuda.device_count()
         if available_devices < 1:
             device = torch.device("cpu")
             gpus = set()
         else:
-            filtered = {g for g in gpus if g < available_devices}
-            if not filtered:
-                filtered = {0}
-            if filtered != gpus:
-                logger.warning(
-                    "Requested GPUs %s exceed available devices (%d); using %s.",
-                    sorted(gpus),
-                    available_devices,
-                    sorted(filtered),
-                )
-            gpus = filtered
+            usable = set()
+            for gpu_idx in gpus:
+                if gpu_idx >= available_devices:
+                    logger.warning("Requested GPU %d is not visible to torch; skipping.", gpu_idx)
+                    continue
+                try:
+                    free_mem, _ = torch.cuda.mem_get_info(gpu_idx)
+                    if free_mem < 512 * 1024 * 1024:
+                        logger.warning(
+                            "Requested GPU %d has only %d MiB free; skipping it.",
+                            gpu_idx,
+                            free_mem // (1024 * 1024),
+                        )
+                        continue
+                except Exception as gpu_error:  # noqa: BLE001
+                    logger.warning("Requested GPU %d unusable (%s); skipping.", gpu_idx, gpu_error)
+                    continue
+                usable.add(gpu_idx)
+            if not usable:
+                usable = {0}
+                logger.warning("No usable GPU found for the requested set %s; falling back to GPU 0.", sorted(gpus))
+            if usable != gpus:
+                logger.warning("Training GPUs filtered %s -> %s.", sorted(gpus), sorted(usable))
+            gpus = usable
     n_gpus = max(1, len(gpus))
 
     if device.type == "cpu":
@@ -325,8 +365,12 @@ def run(*args: object, **kwargs: object) -> None:
 
     Child processes crash with opaque exit codes (e.g. -11 SIGSEGV) that the
     parent only summarizes as "One or more training processes failed". This
-    wrapper prints the full traceback to stdout so it lands in worker.log.
+    wrapper installs a faulthandler (so segfaults dump a Python stack trace)
+    and prints full tracebacks for raised exceptions, landing in worker.log.
     """
+    import faulthandler
+
+    faulthandler.enable()
     try:
         _run(*args, **kwargs)  # type: ignore[arg-type]
     except BaseException:
