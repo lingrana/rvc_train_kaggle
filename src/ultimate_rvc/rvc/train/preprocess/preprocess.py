@@ -399,6 +399,15 @@ def preprocess_training_set(
     done_files = 0
     last_report = 0.0
 
+    if total_files:
+        update_progress(
+            Path(exp_dir),
+            phase="preprocessing",
+            percent=0.1,
+            stage_detail=f"切片 0/{total_files}",
+            done=False,
+        )
+
     remove_sox_libmso6_from_ld_preload()
     with (
         tqdm(total=total_files) as pbar,
@@ -430,10 +439,15 @@ def preprocess_training_set(
                 now_time - last_report >= 0.5 or done_files == total_files
             ):
                 last_report = now_time
+                percent = (
+                    100.0
+                    if done_files == total_files
+                    else max(0.1, done_files * 100 / total_files)
+                )
                 update_progress(
                     Path(exp_dir),
                     phase="preprocessing",
-                    percent=done_files * 100 / total_files,
+                    percent=percent,
                     stage_detail=f"切片 {done_files}/{total_files}",
                     done=False,
                 )

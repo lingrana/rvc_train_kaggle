@@ -579,7 +579,9 @@ renderSideModel(active);renderSideDownloads(completed);renderSideHistory(complet
 ['preprocess-btn','extract-btn','train-btn'].forEach(id=>{$('#'+id).disabled=!!active});$('#stop-btn').style.display=active?'':'none'}
 
 function fmtClock(seconds){try{seconds=Math.max(0,Math.round(Number(seconds)))||0}catch{return '--:--'}const h=Math.floor(seconds/3600),m=Math.floor(seconds%3600/60),s=seconds%60;return h?h+'小时'+m+'分':(m?m+'分'+s+'秒':s+'秒')}
-function liveElapsed(live,fallback){const e=Number(live&&live.elapsed_seconds);if(e>0)return e;const s=Number(live&&live.started_at);if(s>0)return Date.now()/1000-s;return Math.max(0,Number(fallback)||0)}
+function liveElapsed(live,fallback){const pe=Number(live&&live.phase_elapsed_seconds);if(pe>0)return pe;const ps=Number(live&&live.phase_started_at);if(ps>0)return Date.now()/1000-ps;const e=Number(live&&live.elapsed_seconds);if(e>0)return e;const s=Number(live&&live.started_at);if(s>0)return Date.now()/1000-s;return Math.max(0,Number(fallback)||0)}
+function clickElapsed(job){if(job&&job.created_at)return Date.now()/1000-job.created_at;return 0}
+function stageCardElapsed(live,job,st){if(!st.done)return clickElapsed(job)||liveElapsed(live,0);if(job&&job.created_at&&st.finished_at)return Math.max(0,st.finished_at-job.created_at);if(job&&job.created_at)return Math.max(0,(job.updated_at||Date.now()/1000)-job.created_at);return liveElapsed(live,0)}
 function renderStageCard(){
   const el=$('#side-stage-card');if(!el)return;
   const name=state.selectedValues['model']||'';
@@ -598,9 +600,9 @@ function renderStageCard(){
   const rows=steps.map(([key,label])=>{
     const st=stages[key]||{};
     let icon,right;
-    if(st.done){icon='✅';let t=st.finished_at?new Date(st.finished_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';right=st.elapsed_seconds!=null?'已用 '+fmtClock(st.elapsed_seconds)+(t?' · '+t:''):'完成'+(t?' · '+t:'')}
+    if(st.done){icon='✅';let t=st.finished_at?new Date(st.finished_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';const trainFull=key==='train'&&job&&job.created_at&&st.finished_at?(st.finished_at-job.created_at):null;right=(trainFull!=null?'已用 '+fmtClock(trainFull):(st.elapsed_seconds!=null?'已用 '+fmtClock(st.elapsed_seconds):'完成'))+(t?' · '+t:'')}
     else if(failed&&key===failKey){icon='❌';right='未完成 · '+(snap.phase==='failed'?'已失败':'已停止')}
-    else if(active===key){icon='⏳';let t=' · 已用 '+fmtClock(snap.elapsed_seconds);let pct=Number(snap.percent||0).toFixed(1)+'%';if(key==='train'&&snap.total_epochs)right='第 '+(snap.epoch||0)+' / '+snap.total_epochs+' 轮'+t;else right=pct+t;if(snap.stage_detail)right+=' · '+snap.stage_detail}
+    else if(active===key){icon='⏳';let t=' · 已用 '+fmtClock(key==='train'?clickElapsed(job):snap.elapsed_seconds);let pct=Number(snap.percent||0).toFixed(1)+'%';if(key==='train'&&snap.total_epochs)right='第 '+(snap.epoch||0)+' / '+snap.total_epochs+' 轮'+t;else right=pct+t;if(snap.stage_detail)right+=' · '+snap.stage_detail}
     else if(failed){icon='▫️';right='未开始'}
     else {icon='▫️';right='等待开始'}
     return '<div class="side-row"><span>步骤'+label+'</span><span style="color:var(--text-muted);font-weight:400;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+icon+' '+right+'</span></div>';

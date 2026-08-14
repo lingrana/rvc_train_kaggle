@@ -73,10 +73,13 @@ def update_progress(model_dir: Path, **changes: Any) -> dict[str, Any]:
     with directory_lock(model_dir / ".progress.lock", timeout=10, stale_after=300):
         state = read_progress(path) if path.is_file() else {}
         now = time.time()
+        previous_phase = str(state.get("phase", "starting"))
         state.update(changes)
         phase = str(state.get("phase", "starting"))
         if phase not in PHASE_LABELS:
             raise ValueError(f"Unknown training phase: {phase}")
+        if phase != previous_phase:
+            state["phase_started_at"] = now
         if not _number(state.get("started_at", 0)):
             state["started_at"] = now
         total = int(_number(state.get("total_epochs", state.get("total", 0))))
@@ -89,6 +92,10 @@ def update_progress(model_dir: Path, **changes: Any) -> dict[str, Any]:
         if "elapsed_seconds" not in changes:
             started_at = _number(state.get("started_at", 0))
             state["elapsed_seconds"] = round(max(0.0, now - started_at), 1) if started_at else 0
+        phase_started_at = _number(state.get("phase_started_at", 0))
+        state["phase_elapsed_seconds"] = (
+            round(max(0.0, now - phase_started_at), 1) if phase_started_at else 0
+        )
         state.update(
             phase=phase,
             phase_label=PHASE_LABELS[phase],

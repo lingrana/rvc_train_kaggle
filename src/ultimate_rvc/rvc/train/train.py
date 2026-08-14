@@ -627,8 +627,12 @@ def _run(
 
     # Wrap models with DDP for multi-gpu processing
     if use_ddp and device.type == "cuda":
+        logger.info("DDP: wrapping generator on device %s", device_id)
         net_g = DDP(net_g, device_ids=[device_id])
+        logger.info("DDP: generator wrapped")
+        logger.info("DDP: wrapping discriminator on device %s", device_id)
         net_d = DDP(net_d, device_ids=[device_id])
+        logger.info("DDP: discriminator wrapped")
 
     if rank == 0 and device.type == "cuda" and train_dtype == torch.bfloat16:
         logger.info("Using BFloat16 for training.")
@@ -670,6 +674,7 @@ def _run(
         )
 
     except Exception:
+        logger.info("No checkpoint found, training from scratch")
         epoch_str = 1
         global_step = 0
         if pretrain_g not in {"", "None"}:
@@ -728,6 +733,7 @@ def _run(
         scaler.load_state_dict(scaler_dict)
 
     cache = []
+    logger.info("Checkpoint/pretrain prepared, locating reference audio...")
     # collect the reference audio for tensorboard evaluation
     if pathlib.Path(
         os.path.join(RVC_TRAINING_MODELS_DIR, "reference", embedder_name, "feats.npy")
@@ -775,6 +781,7 @@ def _run(
         logger.info(
             "No custom reference found, using a default audio sample for validation"
         )
+        logger.info("Highlight: first dataloader batch fetch begins (fork point)...")
         info = next(iter(train_loader))
         phone, phone_lengths, pitch, pitchf, _, _, _, _, sid = info
         reference = (
@@ -893,10 +900,12 @@ def train_and_evaluate(
         data_iterator = enumerate(train_loader)
 
     epoch_recorder = EpochRecorder()
-    with tqdm(total=len(train_loader), leave=False,
+with tqdm(total=len(train_loader), leave=False,
               disable=True,
               desc=f"Epoch {epoch+1}") as pbar:
         for batch_idx, info in data_iterator:
+            if rank == 0 and batch_idx == 0:
+                logger.info("Training loop started, first batch in-flight")
             if device.type == "cuda" and not cache_data_in_gpu:
                 info = [tensor.cuda(device_id, non_blocking=True) for tensor in info]
             elif device.type != "cuda":
