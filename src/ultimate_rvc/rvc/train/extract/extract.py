@@ -7,6 +7,7 @@ import os
 import pathlib
 from pathlib import Path
 import sys
+import threading
 import time
 
 import numpy as np
@@ -103,7 +104,30 @@ class FeatureInput:
             )
 
 
-def process_files(files, f0_method, device):
+def _count_done(done_path: str) -> int:
+    try:
+        with open(done_path, "r", encoding="utf-8") as done_file:
+            return sum(1 for _ in done_file)
+    except OSError:
+        return 0
+
+
+def _watch_done(done_path: str, model_dir: str, total: int, base_pct: int, label: str, stop: threading.Event) -> None:
+    while True:
+        n = _count_done(done_path)
+        if total:
+            update_progress(
+                Path(model_dir),
+                phase="extracting",
+                percent=min(100.0, base_pct + n * 50 / total),
+                stage_detail=f"{label} {n}/{total}",
+                done=False,
+            )
+        if stop.wait(0.5):
+            return
+
+
+def process_files(files, f0_method, device, done_path=None):
     fe = FeatureInput(f0_method=f0_method, device=device)
     processed = 0
     with tqdm.tqdm(total=len(files), leave=True) as pbar:
@@ -111,6 +135,9 @@ def process_files(files, f0_method, device):
             fe.process_file(file_info)
             pbar.update(1)
             processed += 1
+            if done_path:
+                with open(done_path, "a", encoding="utf-8") as done_file:
+                    done_file.write("1\n")
     return processed
 
 
@@ -129,11 +156,21 @@ def run_pitch_extraction(
         f0_method,
     )
     start_time = time.time()
-    remove_sox_libmso6_from_ld_preload()
-
     total_files = sum(len(part) for part in files)
     done_files = 0
     last_report = 0.0
+    done_path = os.path.join(model_dir, ".extract_done_pitch")
+    try:
+        os.unlink(done_path)
+    except FileNotFoundError:
+        pass
+    _stop_watcher = threading.Event()
+    watcher = threading.Thread(
+        target=_watch_done,
+        args=(done_path, model_dir, total_files, 0, "Pitch 提取", _stop_watcher),
+        daemon=True,
+    )
+    watcher.start()
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=len(devices)) as executor:
         tasks = [
@@ -142,23 +179,32 @@ def run_pitch_extraction(
                 files[i :: len(devices)],
                 f0_method,
                 devices[i],
+                done_path,
             )
             for i in range(len(devices))
         ]
-        for future in concurrent.futures.as_completed(tasks):
-            done_files += int(future.result())
-            now_time = time.time()
-            if total_files and (
-                now_time - last_report >= 0.5 or done_files == total_files
-            ):
-                last_report = now_time
-                update_progress(
-                    Path(model_dir),
-                    phase="extracting",
-                    percent=done_files * 50 / total_files,
-                    stage_detail=f"Pitch 提取 {done_files}/{total_files}",
-                    done=False,
-                )
+        try:
+            for future in concurrent.futures.as_completed(tasks):
+                done_files += int(future.result())
+                now_time = time.time()
+                if total_files and (
+                    now_time - last_report >= 0.5 or done_files == total_files
+                ):
+                    last_report = now_time
+                    update_progress(
+                        Path(model_dir),
+                        phase="extracting",
+                        percent=done_files * 50 / total_files,
+                        stage_detail=f"Pitch 提取 {done_files}/{total_files}",
+                        done=False,
+                    )
+        finally:
+            _stop_watcher.set()
+            watcher.join(timeout=2)
+            try:
+                os.unlink(done_path)
+            except FileNotFoundError:
+                pass
 
     logger.info("Pitch extraction completed in %.2f seconds.", time.time() - start_time)
 
@@ -170,6 +216,7 @@ def process_file_embedding(
     device_num,
     device,
     n_threads,
+    done_path=None,
 ):
     model = load_embedding(embedder_model, embedder_model_custom).to(device).float()
     model.eval()
@@ -177,17 +224,23 @@ def process_file_embedding(
 
     def worker(file_info):
         wav_file_path, _, _, out_file_path = file_info
-        if pathlib.Path(out_file_path).exists():
-            return
-        feats = torch.from_numpy(load_audio_16k(wav_file_path)).to(device).float()
-        feats = feats.view(1, -1)
-        with torch.no_grad():
-            result = model(feats)["last_hidden_state"]
-        feats_out = result.squeeze(0).float().cpu().numpy()
-        if not np.isnan(feats_out).any():
-            np.save(out_file_path, feats_out, allow_pickle=False)
-        else:
-            logger.error("%s contains NaN values and will be skipped.", wav_file_path)
+        try:
+            if not pathlib.Path(out_file_path).exists():
+                feats = torch.from_numpy(load_audio_16k(wav_file_path)).to(device).float()
+                feats = feats.view(1, -1)
+                with torch.no_grad():
+                    result = model(feats)["last_hidden_state"]
+                feats_out = result.squeeze(0).float().cpu().numpy()
+                if not np.isnan(feats_out).any():
+                    np.save(out_file_path, feats_out, allow_pickle=False)
+                else:
+                    logger.error("%s contains NaN values and will be skipped.", wav_file_path)
+        except Exception as error:  # noqa: BLE001
+            logger.error("Failed to embed %s: %s", wav_file_path, error)
+        finally:
+            if done_path:
+                with open(done_path, "a", encoding="utf-8") as done_file:
+                    done_file.write("1\n")
 
     with tqdm.tqdm(total=len(files), leave=True, position=device_num) as pbar:
         with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
@@ -215,6 +268,18 @@ def run_embedding_extraction(
     total_files = sum(len(part) for part in files)
     done_files = 0
     last_report = 0.0
+    done_path = os.path.join(model_dir, ".extract_done_embed")
+    try:
+        os.unlink(done_path)
+    except FileNotFoundError:
+        pass
+    _stop_watcher = threading.Event()
+    watcher = threading.Thread(
+        target=_watch_done,
+        args=(done_path, model_dir, total_files, 50, "Embedding 提取", _stop_watcher),
+        daemon=True,
+    )
+    watcher.start()
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=len(devices)) as executor:
         tasks = [
@@ -226,23 +291,33 @@ def run_embedding_extraction(
                 i,
                 devices[i],
                 threads // len(devices),
+                done_path,
             )
             for i in range(len(devices))
         ]
-        for future in concurrent.futures.as_completed(tasks):
-            done_files += int(future.result())
-            now_time = time.time()
-            if total_files and (
-                now_time - last_report >= 0.5 or done_files == total_files
-            ):
-                last_report = now_time
-                update_progress(
-                    Path(model_dir),
-                    phase="extracting",
-                    percent=50 + done_files * 50 / total_files,
-                    stage_detail=f"Embedding 提取 {done_files}/{total_files}",
-                    done=False,
-                )
+        try:
+            for future in concurrent.futures.as_completed(tasks):
+                done_files += int(future.result())
+                now_time = time.time()
+                if total_files and (
+                    now_time - last_report >= 0.5 or done_files == total_files
+                ):
+                    last_report = now_time
+                    update_progress(
+                        Path(model_dir),
+                        phase="extracting",
+                        percent=50 + done_files * 50 / total_files,
+                        stage_detail=f"Embedding 提取 {done_files}/{total_files}",
+                        done=False,
+                    )
+        finally:
+            _stop_watcher.set()
+            watcher.join(timeout=2)
+            try:
+                os.unlink(done_path)
+            except FileNotFoundError:
+                pass
+
     logger.info(
         "Embedding extraction completed in %.2f seconds.",
         time.time() - start_time,

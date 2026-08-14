@@ -125,6 +125,24 @@ def run(job_id: str) -> None:
     job = read_job(job_id)
     params = job["params"]
     try:
+        from ultimate_rvc.common import TRAINING_MODELS_DIR
+        from ultimate_rvc.rvc.train.progress import update_progress
+
+        model_dir = TRAINING_MODELS_DIR / str(params.get("model_name", ""))
+        model_dir.mkdir(parents=True, exist_ok=True)
+        initial_phase = {
+            "preprocess": "preprocessing",
+            "extract": "extracting",
+            "train": "training",
+            "pipeline": "preprocessing",
+        }.get(job["type"], "starting")
+        update_progress(
+            model_dir,
+            phase=initial_phase,
+            percent=0,
+            stage_detail="正在准备运行环境…",
+            done=False,
+        )
         ensure_models()
         if job["type"] == "preprocess":
             update_job(job_id, stage="preprocessing")

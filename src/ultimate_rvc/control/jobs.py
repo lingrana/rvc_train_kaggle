@@ -171,6 +171,9 @@ def create_job(kind: str, params: dict[str, Any], idempotency_key: str = "") -> 
         }
         atomic_json_dump(job, job_dir / "job.json")
         environment = os.environ.copy()
+        # Serialize CUDA kernels so a segfaulting op surfaces in the Python
+        # stack (faulthandler) instead of dying in a driver background thread.
+        environment.setdefault("CUDA_LAUNCH_BLOCKING", "1")
         command = [sys.executable, "-m", "ultimate_rvc.control.worker", job_id]
         log = (job_dir / "worker.log").open("a", encoding="utf-8")
         flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
