@@ -104,6 +104,14 @@ def refresh_job(job: dict[str, Any]) -> dict[str, Any]:
         progress_path = TRAINING_MODELS_DIR / str(model_name) / "progress.json"
         if progress_path.is_file():
             job["progress"] = read_progress(progress_path)
+        try:
+            from ultimate_rvc.control.registry import read_registry
+
+            registry_entry = read_registry().get(str(model_name))
+            if registry_entry:
+                job["stages"] = registry_entry.get("stages")
+        except Exception:
+            pass
     job["alive"] = alive
     return job
 
@@ -112,6 +120,7 @@ def update_job(job_id: str, **changes: Any) -> dict[str, Any]:
     job = read_job(job_id)
     job.pop("progress", None)
     job.pop("alive", None)
+    job.pop("stages", None)
     job.update(changes, updated_at=time.time())
     atomic_json_dump(job, _job_path(job_id))
     return job

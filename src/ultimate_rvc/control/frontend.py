@@ -358,7 +358,7 @@ footer a:hover{color:var(--accent)}
         </div>
         <div class="card-grid c2" style="margin-top:12px">
           <div class="field"><div class="field-label">保存间隔</div><input class="field-input" id="save" type="number" value="25" min="1" max="100"></div>
-          <div class="field"><div class="field-label">过拟合阈值</div><input class="field-input" id="overtrain-threshold" type="number" value="30"></div>
+          <div class="field"><div class="field-label">过拟合阈值</div><input class="field-input" id="overtrain-threshold" type="number" value="50"></div>
         </div>
       </div>
     </div>
@@ -417,7 +417,7 @@ footer a:hover{color:var(--accent)}
           </div>
         </div>
         <div class="card-grid c2" style="margin-top:12px">
-          <div class="toggle-row"><span class="toggle-label">预加载数据集</span><div class="toggle on" data-field="preload" onclick="toggleSwitch(this)"></div></div>
+          <div class="toggle-row"><span class="toggle-label">预加载数据集</span><div class="toggle" data-field="preload" onclick="toggleSwitch(this)"></div></div>
           <div class="toggle-row"><span class="toggle-label">减少显存使用</span><div class="toggle" data-field="reduce-memory" onclick="toggleSwitch(this)"></div></div>
         </div>
       </div>
@@ -474,7 +474,7 @@ function setSel(fieldId,value){const opt=document.querySelector('.sel-opt[data-v
 function setToggle(fieldId,on){const el=$('[data-field="'+fieldId+'"]');if(el){el.classList.toggle('on',on);if(fieldId==='detect-overtrain'){const t=$('#overtrain-threshold');if(t)t.disabled=!on}}}
 function resetStep1(){setSel('sample-rate','48000');setSel('normalization','post');setSel('split','Automatic');$('#chunk').value=3;$('#overlap').value=.3;$('#preprocess-cores').value=4;setToggle('filter-audio',true);setToggle('clean-audio',false);$('#clean-strength').value=.7}
 function resetStep2(){setSel('f0-method','rmvpe');setSel('embedder','local-hubert-base');$('#custom-embedder').value='';$('#mutes').value=2}
-function resetStep3(){setSel('version','v2');$('#epochs').value=300;$('#batch').value=8;setToggle('f0-guidance',true);setToggle('detect-overtrain',true);$('#overtrain-threshold').value=30;$('#save').value=25;setSel('vocoder','HiFi-GAN');setSel('index','Faiss');setSel('pretrained','Default');$('#custom-pretrained').value='';setToggle('save-checkpoints',false);setToggle('save-weights',false);setToggle('clear-data',false);setToggle('upload-model',false);$('#upload-name').value='';$('#upload-name-wrap').style.display='none';setSel('training-device','GPU');setSel('precision','fp32');setToggle('preload',true);setToggle('reduce-memory',false)}
+function resetStep3(){setSel('version','v2');$('#epochs').value=300;$('#batch').value=8;setToggle('f0-guidance',true);setToggle('detect-overtrain',true);$('#overtrain-threshold').value=50;$('#save').value=25;setSel('vocoder','HiFi-GAN');setSel('index','Faiss');setSel('pretrained','Default');$('#custom-pretrained').value='';setToggle('save-checkpoints',false);setToggle('save-weights',false);setToggle('clear-data',false);setToggle('upload-model',false);$('#upload-name').value='';$('#upload-name-wrap').style.display='none';setSel('training-device','GPU');setSel('precision','fp32');setToggle('preload',false);setToggle('reduce-memory',false)}
 
 function selToggle(el){const dd=el.nextElementSibling;document.querySelectorAll('.sel-dd.open').forEach(d=>{if(d!==dd)d.classList.remove('open')});document.querySelectorAll('.sel-btn.open').forEach(c=>{if(c!==el)c.classList.remove('open')});el.classList.toggle('open');dd.classList.toggle('open')}
 function selPick(opt,fieldId){const wrap=opt.closest('.sel'),btn=wrap.querySelector('.sel-btn');btn.querySelector('.st').textContent=opt.querySelector('.ol').textContent;btn.querySelector('.si').textContent=opt.querySelector('.oi').textContent;wrap.querySelectorAll('.sel-opt').forEach(o=>o.classList.remove('selected'));opt.classList.add('selected');btn.classList.remove('open');wrap.querySelector('.sel-dd').classList.remove('open');if(fieldId)state.selectedValues[fieldId]=opt.dataset.value;onFieldChange(fieldId,opt.dataset.value)}
@@ -579,6 +579,7 @@ renderSideModel(active);renderSideDownloads(completed);renderSideHistory(complet
 ['preprocess-btn','extract-btn','train-btn'].forEach(id=>{$('#'+id).disabled=!!active});$('#stop-btn').style.display=active?'':'none'}
 
 function fmtClock(seconds){try{seconds=Math.max(0,Math.round(Number(seconds)))||0}catch{return '--:--'}const h=Math.floor(seconds/3600),m=Math.floor(seconds%3600/60),s=seconds%60;return h?h+'小时'+m+'分':(m?m+'分'+s+'秒':s+'秒')}
+function liveElapsed(live,fallback){const e=Number(live&&live.elapsed_seconds);if(e>0)return e;const s=Number(live&&live.started_at);if(s>0)return Date.now()/1000-s;return Math.max(0,Number(fallback)||0)}
 function renderStageCard(){
   const el=$('#side-stage-card');if(!el)return;
   const name=state.selectedValues['model']||'';
@@ -586,18 +587,22 @@ function renderStageCard(){
   const reg=state.registry[name]||{stages:{preprocess:{done:false},extract:{done:false},train:{done:false}},last_phase:''};
   const snap={...(state.progressSnap[name]||{})};
   const job=state.lastJobs.find(j=>j.params&&j.params.model_name===name);
-  if(job){const live=job.progress||{};snap.phase=live.phase||(job.phase==='queued'?'queued':snap.phase);snap.percent=live.percent;snap.epoch=live.epoch;snap.total_epochs=live.total_epochs;snap.loss_g=live.loss_g;snap.loss_d=live.loss_d;snap.best_epoch=live.best_epoch;snap.best_loss=live.best_loss;snap.error=live.error||snap.error;snap.elapsed_seconds=live.elapsed_seconds;if(snap.elapsed_seconds==null&&job.created_at)snap.elapsed_seconds=Date.now()/1000-job.created_at}
-  const stages=reg.stages||{},steps=[['preprocess','2 数据预处理'],['extract','3 特征提取'],['train','4 模型训练']];
+  let stages=reg.stages||{};
+  if(job){const live=job.progress||{};snap.phase=live.phase||(job.phase==='queued'?'queued':snap.phase);snap.percent=live.percent;snap.epoch=live.epoch;snap.total_epochs=live.total_epochs;snap.loss_g=live.loss_g;snap.loss_d=live.loss_d;snap.best_epoch=live.best_epoch;snap.best_loss=live.best_loss;snap.error=live.error||snap.error;snap.elapsed_seconds=liveElapsed(live,job.created_at?Date.now()/1000-job.created_at:0);if(job.stages)stages=job.stages}
+  const steps=[['preprocess','2 数据预处理'],['extract','3 特征提取'],['train','4 模型训练']];
   const activeNames={queued:'preprocess',preprocessing:'preprocess',extracting:'extract',training:'train',indexing:'train',validating:'train',uploading:'train'};
-  const active=activeNames[snap.phase||''],failed=snap.phase==='failed'||snap.phase==='stopped';
+  const jobStage=activeNames[(job&&job.stage)||'']||'';
+  const active=activeNames[snap.phase||'']||jobStage;
+  const failed=snap.phase==='failed'||snap.phase==='stopped';
+  const failKey=failed&&(jobStage||((steps.find(([k])=>!(stages[k]&&stages[k].done))||[])[0]||''));
   const rows=steps.map(([key,label])=>{
     const st=stages[key]||{};
-    let icon=st.done?'✅':(active===key?'⏳':(failed?'❌':'▫️'));
-    let right;
-    if(st.done){let t=st.finished_at?new Date(st.finished_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';right='已用 '+fmtClock(st.elapsed_seconds)+(t?' · '+t:'')}
-    else if(active===key){let t=snap.elapsed_seconds!=null?' · 已用 '+fmtClock(snap.elapsed_seconds):'';let pct=Number(snap.percent||0).toFixed(1)+'%';if(key==='train'&&snap.total_epochs)right='第 '+(snap.epoch||0)+' / '+snap.total_epochs+' 轮'+t;else right=pct+t;if(snap.stage_detail)right+=' · '+snap.stage_detail}
-    else if(failed)right='未完成 · '+(snap.phase==='failed'?'已失败':'已停止');
-    else right='等待开始';
+    let icon,right;
+    if(st.done){icon='✅';let t=st.finished_at?new Date(st.finished_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';right=st.elapsed_seconds!=null?'已用 '+fmtClock(st.elapsed_seconds)+(t?' · '+t:''):'完成'+(t?' · '+t:'')}
+    else if(failed&&key===failKey){icon='❌';right='未完成 · '+(snap.phase==='failed'?'已失败':'已停止')}
+    else if(active===key){icon='⏳';let t=' · 已用 '+fmtClock(snap.elapsed_seconds);let pct=Number(snap.percent||0).toFixed(1)+'%';if(key==='train'&&snap.total_epochs)right='第 '+(snap.epoch||0)+' / '+snap.total_epochs+' 轮'+t;else right=pct+t;if(snap.stage_detail)right+=' · '+snap.stage_detail}
+    else if(failed){icon='▫️';right='未开始'}
+    else {icon='▫️';right='等待开始'}
     return '<div class="side-row"><span>步骤'+label+'</span><span style="color:var(--text-muted);font-weight:400;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+icon+' '+right+'</span></div>';
   }).join('');
   let extra='';
@@ -607,7 +612,7 @@ function renderStageCard(){
   else if(snap.phase==='failed'){const errorShown=String(snap.error||(job&&job.error)||'').replace(/</g,'&lt;').slice(0,400);extra='<div class="side-row"><span>状态</span><span style="color:var(--red)">❌ 训练失败</span></div>'+(errorShown?'<div style="font-size:11px;color:var(--red);margin-top:6px;word-break:break-all">'+errorShown+'</div>':'')}
   el.innerHTML='<div class="side-info">'+rows+extra+'</div>';
 }
-function renderSideModel(active){const el=$('#side-model-info');if(!active||!active.params){el.innerHTML='<div style="font-size:12px;color:var(--text-muted)">等待训练任务...</div>';return}const p=active.progress||{},pct=Math.max(0,Math.min(100,Number(p.percent)||0)),stage=active.stage||p.phase||active.phase,steps={preprocessing:['2','数据预处理'],extracting:['3','特征提取'],training:['4','模型训练'],indexing:['4','生成索引'],validating:['4','验证推理'],uploading:['4','上传模型']},info=steps[stage]||['-',active.phase],isTrain=stage==='training'||stage==='indexing'||stage==='validating'||stage==='uploading';let rows=[['当前阶段','步骤 '+info[0]+' · '+info[1]]];if(isTrain){rows.push(['训练轮次',`${p.epoch||0} / ${p.total_epochs||0}`]);if(p.best_epoch!=null)rows.push(['最佳轮次',p.best_epoch]);if(p.best_loss!=null)rows.push(['最佳损失',Number(p.best_loss).toFixed(4)]);rows.push(['生成器损失',`G ${Number(p.loss_g||0).toFixed(4)}`]);rows.push(['判别器损失',`D ${Number(p.loss_d||0).toFixed(4)}`]);if(p.eta_seconds!=null)rows.push(['剩余时间',fmt(p.eta_seconds)])}else{rows.push(['完成度',pct.toFixed(1)+'%'])}rows.push(['已用时间',fmt(p.elapsed_seconds)]);el.innerHTML='<div class="side-row" style="margin-bottom:8px"><span>模型名称</span><span style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(active.params.model_name||'')+'">'+(active.params.model_name||'')+'</span></div><div class="progress-bar" style="margin:6px 0 10px"><div class="progress-fill" style="width:'+pct+'%"></div></div>'+rows.map(([a,b])=>'<div class="side-row"><span>'+a+'</span><span>'+b+'</span></div>').join('')}
+function renderSideModel(active){const el=$('#side-model-info');if(!active||!active.params){el.innerHTML='<div style="font-size:12px;color:var(--text-muted)">等待训练任务...</div>';return}const p=active.progress||{},pct=Math.max(0,Math.min(100,Number(p.percent)||0)),stage=active.stage||p.phase||active.phase,steps={preprocessing:['2','数据预处理'],extracting:['3','特征提取'],training:['4','模型训练'],indexing:['4','生成索引'],validating:['4','验证推理'],uploading:['4','上传模型']},info=steps[stage]||['-',active.phase],isTrain=stage==='training'||stage==='indexing'||stage==='validating'||stage==='uploading';let rows=[['当前阶段','步骤 '+info[0]+' · '+info[1]]];if(isTrain){rows.push(['训练轮次',`${p.epoch||0} / ${p.total_epochs||0}`]);if(p.best_epoch!=null)rows.push(['最佳轮次',p.best_epoch]);if(p.best_loss!=null)rows.push(['最佳损失',Number(p.best_loss).toFixed(4)]);rows.push(['生成器损失',`G ${Number(p.loss_g||0).toFixed(4)}`]);rows.push(['判别器损失',`D ${Number(p.loss_d||0).toFixed(4)}`]);if(p.eta_seconds!=null)rows.push(['剩余时间',fmt(p.eta_seconds)])}else{rows.push(['完成度',pct.toFixed(1)+'%'])}rows.push(['已用时间',fmt(liveElapsed(p))]);el.innerHTML='<div class="side-row" style="margin-bottom:8px"><span>模型名称</span><span style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(active.params.model_name||'')+'">'+(active.params.model_name||'')+'</span></div><div class="progress-bar" style="margin:6px 0 10px"><div class="progress-fill" style="width:'+pct+'%"></div></div>'+rows.map(([a,b])=>'<div class="side-row"><span>'+a+'</span><span>'+b+'</span></div>').join('')}
 
 function renderSideDownloads(completed){const el=$('#side-downloads');if(!completed.length){el.innerHTML='<div style="font-size:12px;color:var(--text-muted)">暂无可下载文件</div>';return}const model=completed[0];const name=model.params?.model_name||'';el.innerHTML='<div class="dl-grid"><div class="dl-card"><div class="dl-icon">📦</div><div class="dl-name">.pth</div><div class="dl-meta">模型权重</div><a class="dl-btn" href="/api/v1/models/'+encodeURIComponent(name)+'/files/pth" download>下载</a></div><div class="dl-card"><div class="dl-icon">🔍</div><div class="dl-name">.index</div><div class="dl-meta">特征索引</div><a class="dl-btn" href="/api/v1/models/'+encodeURIComponent(name)+'/files/index" download>下载</a></div></div>'}
 

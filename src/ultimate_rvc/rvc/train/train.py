@@ -147,7 +147,7 @@ def main(
     remove_sox_libmso6_from_ld_preload()
     import faulthandler
 
-    faulthandler.enable()
+    faulthandler.enable(all_threads=True)
     experiment_dir = os.path.join(TRAINING_MODELS_DIR, model_name)
     config_save_path = os.path.join(experiment_dir, "config.json")
     stop_requested_path = os.path.join(experiment_dir, "stop_requested")
@@ -416,7 +416,7 @@ def run(*args: object, **kwargs: object) -> None:
     """
     import faulthandler
 
-    faulthandler.enable()
+    faulthandler.enable(all_threads=True)
     try:
         _run(*args, **kwargs)  # type: ignore[arg-type]
     except BaseException:

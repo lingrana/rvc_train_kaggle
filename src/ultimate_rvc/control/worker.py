@@ -90,7 +90,7 @@ def train(params: dict[str, Any]) -> Any:
         params["model_name"], RVCVersion(params.get("version", "v2")),
         bool(params.get("f0_guidance", True)),
         int(params.get("epochs", 300)), int(params.get("batch_size", 8)),
-        bool(params.get("detect_overtraining", True)), int(params.get("overtraining_threshold", 30)),
+        bool(params.get("detect_overtraining", True)), int(params.get("overtraining_threshold", 50)),
         Vocoder(params.get("vocoder", "HiFi-GAN")),
         IndexAlgorithm(params.get("index_algorithm", "Faiss")),
         PretrainedType(params.get("pretrained_type", "Default")),

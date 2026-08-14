@@ -77,6 +77,8 @@ def update_progress(model_dir: Path, **changes: Any) -> dict[str, Any]:
         phase = str(state.get("phase", "starting"))
         if phase not in PHASE_LABELS:
             raise ValueError(f"Unknown training phase: {phase}")
+        if not _number(state.get("started_at", 0)):
+            state["started_at"] = now
         total = int(_number(state.get("total_epochs", state.get("total", 0))))
         epoch = int(_number(state.get("epoch", 0)))
         batch = int(_number(state.get("batch", 0)))
@@ -84,6 +86,9 @@ def update_progress(model_dir: Path, **changes: Any) -> dict[str, Any]:
         if "percent" not in changes:
             partial = batch / total_batches if total_batches else 0
             state["percent"] = min(100.0, ((epoch + partial) / total * 100) if total else 0)
+        if "elapsed_seconds" not in changes:
+            started_at = _number(state.get("started_at", 0))
+            state["elapsed_seconds"] = round(max(0.0, now - started_at), 1) if started_at else 0
         state.update(
             phase=phase,
             phase_label=PHASE_LABELS[phase],

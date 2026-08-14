@@ -153,7 +153,7 @@ def run_training(
     num_epochs: int = 300,
     batch_size: int = 16,
     detect_overtraining: bool = True,
-    overtraining_threshold: int = 30,
+    overtraining_threshold: int = 50,
     vocoder: Vocoder = Vocoder.HIFI_GAN,
     index_algorithm: IndexAlgorithm = IndexAlgorithm.FAISS,
     pretrained_type: PretrainedType = PretrainedType.DEFAULT,
