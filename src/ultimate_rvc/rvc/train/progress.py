@@ -136,6 +136,62 @@ def tail_log(path: Path, max_lines: int = 20, max_bytes: int = 32_768) -> list[s
         return []
 
 
+_ERROR_HINTS = (
+    "traceback",
+    "runtimeerror",
+    "exception",
+    "cuda",
+    "out of memory",
+    "oom",
+    "failed",
+    "nan",
+    "nccl",
+    "error",
+    "rank ",
+)
+
+
+def tail_log_with_errors(
+    path: Path,
+    max_lines: int = 30,
+    max_hits: int = 20,
+    context: int = 2,
+    max_bytes: int = 1_048_576,
+) -> list[str]:
+    """Tail a log but prefer error-like lines when present.
+
+    Error summaries can sit far from the physical end of the log (for example
+    a `RuntimeError: One or more training processes failed.` after hundreds of
+    lazy-loader warnings), so a plain tail often hides the root cause. Scans a
+    bounded tail window for error hints and returns the last hits followed by
+    a few lines of context; falls back to a plain tail when nothing matches.
+    """
+    try:
+        with path.open("rb") as file:
+            file.seek(0, 2)
+            size = file.tell()
+            file.seek(max(0, size - max_bytes))
+            data = file.read()
+        text = data.decode("utf-8", errors="replace")
+        lines = text.splitlines()
+        if size > max_bytes:
+            lines = lines[1:]
+        hits = [i for i, line in enumerate(lines) if any(h in line.lower() for h in _ERROR_HINTS)]
+        if not hits:
+            return lines[-max_lines:]
+        seen = set()
+        out = []
+        for i in hits[-max_hits:]:
+            for k in range(i, min(len(lines), i + context + 1)):
+                line = lines[k].strip()
+                if line and line not in seen:
+                    seen.add(line)
+                    out.append(line)
+        return out[-max_lines:]
+    except OSError:
+        return []
+
+
 def mark_failed(model_dir: Path, error: BaseException | str) -> dict[str, Any]:
     return update_progress(model_dir, phase="failed", error=str(error), done=False)
 

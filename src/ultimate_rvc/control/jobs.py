@@ -91,9 +91,14 @@ def refresh_job(job: dict[str, Any]) -> dict[str, Any]:
         if job["phase"] == "failed":
             log_path = JOBS_DIR / str(job["id"]) / "worker.log"
             try:
-                job["log_tail"] = log_path.read_text("utf-8", errors="replace").splitlines()[-30:]
-            except OSError:
-                job["log_tail"] = []
+                from ultimate_rvc.rvc.train.progress import tail_log_with_errors
+
+                job["log_tail"] = tail_log_with_errors(log_path)
+            except Exception:
+                try:
+                    job["log_tail"] = log_path.read_text("utf-8", errors="replace").splitlines()[-30:]
+                except OSError:
+                    job["log_tail"] = []
     model_name = job.get("params", {}).get("model_name")
     if model_name:
         progress_path = TRAINING_MODELS_DIR / str(model_name) / "progress.json"
