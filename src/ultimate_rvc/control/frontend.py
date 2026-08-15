@@ -604,14 +604,14 @@ function renderStageCard(){
     let icon,right;
     if(st.done){icon='✅';let t=st.finished_at?new Date(st.finished_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';const elapsed=(key==='train'&&job&&job.created_at&&st.finished_at)?Math.max(0,st.finished_at-job.created_at):st.elapsed_seconds;right=(elapsed!=null?'已用 '+fmtClock(elapsed):'完成')+(t?' · '+t:'')}
     else if(failed&&key===failKey){icon='❌';right='未完成 · '+(snap.phase==='failed'?'已失败':'已停止')}
-    else if(active===key){icon='⏳';let t=' · 已用 '+fmtClock(key==='train'?clickElapsed(job):snap.elapsed_seconds);let pct=Number(snap.percent||0).toFixed(1)+'%';right=pct+t;if(snap.stage_detail)right+=' · '+snap.stage_detail}
+    else if(active===key){icon='⏳';let elapsed=key==='train'?clickElapsed(job):snap.elapsed_seconds;let pct=Number(snap.percent||0);if(key==='train'){const _el=Number(snap.elapsed_seconds||0),_eta=Number(snap.eta_seconds||0);if(_el+_eta>0)pct=Math.max(pct,Math.min(99,_el/(_el+_eta)*100))}right=pct.toFixed(1)+'% · 已用 '+fmtClock(elapsed);if(key!=='train'&&snap.stage_detail)right+=' · '+snap.stage_detail}
     else if(failed){icon='▫️';right='未开始'}
     else {icon='▫️';right='等待开始'}
     return '<div class="side-row"><span>步骤'+label+'</span><span style="color:var(--text-muted);font-weight:400;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+icon+' '+right+'</span></div>';
   }).join('');
   let extra='';
   const trainPhase=snap.phase==='training'||snap.phase==='indexing'||snap.phase==='validating'||snap.phase==='uploading';
-  if(trainPhase){extra='<div class="side-row"><span>训练轮次</span><span>'+(snap.epoch||0)+' / '+(snap.total_epochs||0)+'</span></div>'+(snap.best_epoch!=null?'<div class="side-row"><span>最佳一轮</span><span>第 '+snap.best_epoch+' 轮'+(snap.best_loss!=null?' · 损失 '+Number(snap.best_loss).toFixed(4):'')+'</span></div>':'')+(snap.loss_g!=null?'<div class="side-row"><span>损失 G · D</span><span>'+Number(snap.loss_g).toFixed(4)+' · '+Number(snap.loss_d).toFixed(4)+'</span></div>':'')}
+  if(trainPhase){const _el=Number(snap.elapsed_seconds||0),_eta=Number(snap.eta_seconds||0);const _pct=(_el+_eta>0)?Math.min(99,_el/(_el+_eta)*100):Number(snap.percent||0);extra='<div class="side-row"><span>进度</span><span>'+_pct.toFixed(1)+'%</span></div><div class="side-row"><span>已用时间</span><span>'+fmtClock(_el)+'</span></div>'+(_eta>0?'<div class="side-row"><span>剩余时间</span><span>'+fmtClock(_eta)+'</span></div>':'')}
   else if(snap.phase==='completed')extra='<div class="side-row"><span>状态</span><span style="color:var(--green)">✅ 训练完成</span></div>';
   else if(snap.phase==='failed'){const errorShown=String(snap.error||(job&&job.error)||'').replace(/</g,'&lt;').slice(0,400);extra='<div class="side-row"><span>状态</span><span style="color:var(--red)">❌ 训练失败</span></div>'+(errorShown?'<div style="font-size:11px;color:var(--red);margin-top:6px;word-break:break-all">'+errorShown+'</div>':'')}
   el.innerHTML='<div class="side-info">'+rows+extra+'</div>';
