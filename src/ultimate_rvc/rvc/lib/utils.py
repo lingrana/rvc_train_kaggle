@@ -13,7 +13,6 @@ import wget
 import numpy as np
 
 from torch import nn
-from transformers.models.hubert.modeling_hubert import HubertModel
 
 import librosa
 import soundfile as sf
@@ -35,10 +34,35 @@ base_path = os.path.join(str(RVC_MODELS_DIR), "formant", "stftpitchshift")
 stft = base_path + ".exe" if sys.platform == "win32" else base_path
 
 
-class HubertModelWithFinalProj(HubertModel):
-    def __init__(self, config):
-        super().__init__(config)
-        self.final_proj = nn.Linear(config.hidden_size, config.classifier_proj_size)
+_TORCHVISION_COMPAT_LIB = None
+
+
+def _load_hubert_model() -> type:
+    """Load HuBERT without failing on Kaggle's torchvision build."""
+    global _TORCHVISION_COMPAT_LIB
+    import torch
+
+    try:
+        library = torch.library.Library("torchvision", "FRAGMENT")
+        library.define(
+            "nms(Tensor dets, Tensor scores, float iou_threshold) -> Tensor",
+        )
+        _TORCHVISION_COMPAT_LIB = library
+    except (AttributeError, RuntimeError, TypeError):
+        # The operator already exists, or this Torch build has no library API.
+        pass
+
+    from transformers.models.hubert.modeling_hubert import HubertModel
+
+    class HubertModelWithFinalProj(HubertModel):
+        def __init__(self, config):
+            super().__init__(config)
+            self.final_proj = nn.Linear(
+                config.hidden_size,
+                config.classifier_proj_size,
+            )
+
+    return HubertModelWithFinalProj
 
 
 def load_audio_16k(file):
@@ -196,5 +220,6 @@ def load_embedding(embedder_model, custom_embedder=None):
             print(f"Downloading {url} to {model_path}...")
             wget.download(url, out=json_file)
 
-    models = HubertModelWithFinalProj.from_pretrained(model_path)
+    hubert_model = _load_hubert_model()
+    models = hubert_model.from_pretrained(model_path)
     return models

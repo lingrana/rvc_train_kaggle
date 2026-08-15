@@ -598,7 +598,7 @@ function renderStageCard(){
   const jobStage=activeNames[(job&&job.stage)||'']||'';
   const active=activeNames[snap.phase||'']||jobStage;
   const failed=snap.phase==='failed'||snap.phase==='stopped';
-  const failKey=failed&&(jobStage||((steps.find(([k])=>!(stages[k]&&stages[k].done))||[])[0]||''));
+  const failKey=failed&&(jobStage||(job&&job.type==='preprocess'?'preprocess':job&&job.type==='extract'?'extract':job&&job.type==='train'?'train':'')||((steps.find(([k])=>!(stages[k]&&stages[k].done))||[])[0]||''));
   const rows=steps.map(([key,label])=>{
     const st=stages[key]||{};
     let icon,right;
