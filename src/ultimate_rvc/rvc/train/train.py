@@ -171,7 +171,7 @@ def main(
             " extraction steps?",
             config_save_path,
         )
-        sys.exit(1)
+        raise FileNotFoundError(f"Config file not found at {config_save_path}. Did you run preprocessing and feature extraction steps?")
     sample_rate = config.data.sample_rate if sample_rate is None else sample_rate
 
     if (
@@ -492,10 +492,10 @@ def run(*args: object, **kwargs: object) -> None:
     faulthandler.enable(all_threads=True)
     try:
         _run(*args, **kwargs)  # type: ignore[arg-type]
-    except BaseException:
+    except Exception:
         print("[RVC] 训练子进程异常（traceback 已写入日志）:")
         traceback.print_exc()
-        sys.exit(1)
+        raise
 
 
 def _run(
@@ -618,7 +618,7 @@ def _run(
             "Not enough data in the training set. Perhaps you forgot to slice the"
             " audio files in preprocess?",
         )
-        sys.exit(1)
+        raise RuntimeError("Not enough data in the training set. Perhaps you forgot to slice the audio files in preprocess?")
 
     # defaults
     embedder_name = "contentvec"
@@ -780,7 +780,7 @@ def _run(
                     "The parameters of the pretrain model such as the sample rate or"
                     " architecture do not match the selected model.",
                 )
-                sys.exit(1)
+                raise RuntimeError("Pretrained generator model parameters (sample rate or architecture) do not match the selected model.")
 
         if pretrain_d not in {"", "None"}:
             if rank == 0:
@@ -799,7 +799,7 @@ def _run(
                     "The parameters of the pretrain model such as the sample rate or"
                     " architecture do not match the selected model.",
                 )
-                sys.exit(1)
+                raise RuntimeError("Pretrained discriminator model parameters (sample rate or architecture) do not match the selected model.")
 
     # Initialize schedulers
     scheduler_g = torch.optim.lr_scheduler.ExponentialLR(

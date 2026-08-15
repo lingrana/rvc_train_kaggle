@@ -340,8 +340,21 @@ def preprocess_training_set(
     pp = PreProcess(sr, exp_dir)
     logger.info("Starting preprocess with %d processes...", num_processes)
 
+    candidate_count = sum(
+        1 for _, _, fnames in os.walk(input_root) for _ in fnames
+    )
+    update_progress(
+        Path(exp_dir),
+        phase="preprocessing",
+        percent=1,
+        stage_detail=f"扫描文件 0/{candidate_count}",
+        done=False,
+    )
+
     files = []
     idx = 0
+    scanned = 0
+    last_scan_report = time.time()
 
     for root, _, filenames in os.walk(input_root):
         try:
@@ -349,6 +362,18 @@ def preprocess_training_set(
             for f in filenames:
                 f_path = os.path.join(root, f)
                 audio_info = pydub_utils.mediainfo(f_path)
+                scanned += 1
+                now_time = time.time()
+                if now_time - last_scan_report >= 0.5:
+                    last_scan_report = now_time
+                    scan_pct = 1 + scanned * 4 / max(candidate_count, 1)
+                    update_progress(
+                        Path(exp_dir),
+                        phase="preprocessing",
+                        percent=min(4.9, scan_pct),
+                        stage_detail=f"扫描文件 {scanned}/{candidate_count}",
+                        done=False,
+                    )
                 if audio_info["format_name"] in {
                     AudioExt.WAV,
                     AudioExt.FLAC,
@@ -403,7 +428,7 @@ def preprocess_training_set(
         update_progress(
             Path(exp_dir),
             phase="preprocessing",
-            percent=0.1,
+            percent=5,
             stage_detail=f"切片 0/{total_files}",
             done=False,
         )
@@ -439,7 +464,7 @@ def preprocess_training_set(
                 now_time - last_report >= 0.5 or done_files == total_files
             ):
                 last_report = now_time
-                percent = max(0.1, min(99.9, done_files * 100 / total_files))
+                percent = max(5, min(99.9, 5 + done_files * 95 / total_files))
                 update_progress(
                     Path(exp_dir),
                     phase="preprocessing",
