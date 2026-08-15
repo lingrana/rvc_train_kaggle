@@ -9,13 +9,7 @@ from typing import TYPE_CHECKING
 
 import lazy_loader as lazy
 
-from pathlib import Path
-
-from rich import print as rprint
-
-from ultimate_rvc.common import VOICE_MODELS_DIR
 from ultimate_rvc.core.common import FLAG_FILE
-from ultimate_rvc.core.generate.song_cover import initialize_audio_separator
 from ultimate_rvc.rvc.lib.tools.prerequisites_download import (
     prequisites_download_pipeline,
 )
@@ -27,42 +21,6 @@ else:
     static_sox = lazy.load("static_sox")
 
 
-def _download_and_extract_model(url: str, model_name: str) -> None:
-    """Download a zip file from a URL and extract it to VOICE_MODELS_DIR."""
-    import io
-    import zipfile
-    import urllib.request
-
-    dest = VOICE_MODELS_DIR / model_name
-    dest.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(url, timeout=120) as resp:
-        data = resp.read()
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:
-        zf.extractall(dest)
-
-
-def download_sample_models() -> None:
-    """Download sample RVC models."""
-    named_model_links = [
-        (
-            "https://huggingface.co/damnedraxx/TaylorSwift/resolve/main/TaylorSwift.zip",
-            "Taylor Swift",
-        ),
-        (
-            "https://huggingface.co/Vermiculos/balladjames/resolve/main/Ballad%20James.zip?download=true",
-            "James Hetfield",
-        ),
-        ("https://huggingface.co/ryolez/MMLP/resolve/main/MMLP.zip", "Eminem"),
-    ]
-    for model_url, model_name in named_model_links:
-        if not Path(VOICE_MODELS_DIR / model_name).is_dir():
-            rprint(f"Downloading {model_name}...")
-            try:
-                _download_and_extract_model(model_url, model_name)
-            except Exception as e:  # noqa: BLE001
-                rprint(f"Failed to download {model_name}: {e}")
-
-
 def initialize() -> None:
     """Initialize the Ultimate RVC project."""
     prequisites_download_pipeline(exe=False)
@@ -70,8 +28,6 @@ def initialize() -> None:
         # NOTE we only add_paths so that sox
         # binaries are downloaded as part of initialization.
         static_sox.add_paths(weak=True)
-        download_sample_models()
-        initialize_audio_separator()
         FLAG_FILE.touch()
 
 

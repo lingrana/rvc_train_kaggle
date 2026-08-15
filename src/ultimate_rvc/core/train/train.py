@@ -169,6 +169,7 @@ def run_training(
     precision: PrecisionType = PrecisionType.FP32,
     preload_dataset: bool = False,
     reduce_memory_usage: bool = False,
+    started_at: float | None = None,
 ) -> list[str] | None:
     """
 
@@ -305,7 +306,7 @@ def run_training(
         update_progress,
     )
 
-    initialize_progress(model_path, num_epochs)
+    initialize_progress(model_path, num_epochs, started_at=started_at)
 
     resume_root = os.environ.get("RVC_RESUME_ROOT")
     if resume_root and not any(model_path.glob("G_*.pth")):

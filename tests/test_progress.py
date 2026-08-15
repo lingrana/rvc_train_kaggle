@@ -54,6 +54,23 @@ def test_explicit_started_at_resets_elapsed_clocks(tmp_path: Path) -> None:
     assert state["phase_elapsed_seconds"] < 1
 
 
+def test_training_percent_uses_elapsed_and_eta(tmp_path: Path) -> None:
+    initialize_progress(tmp_path, 100, started_at=time.time() - 30)
+    state = update_progress(
+        tmp_path,
+        phase="training",
+        elapsed_seconds=30,
+        eta_seconds=70,
+        percent=12,
+        done=False,
+    )
+    assert state["percent"] == 30
+    assert read_progress(tmp_path / "progress.json")["percent"] == 30
+
+    state = update_progress(tmp_path, phase="completed", done=True)
+    assert state["percent"] == 100
+
+
 def test_terminal_helpers_and_legacy_schema(tmp_path: Path) -> None:
     path = tmp_path / "progress.json"
     path.write_text(json.dumps({"epoch": 3, "total": 3, "done": True}), "utf-8")

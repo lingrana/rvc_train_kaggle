@@ -11,15 +11,18 @@ import json
 import os
 import secrets
 import shutil
+import tempfile
 import time
 import uuid
+import zipfile
 from collections import defaultdict, deque
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse
+from starlette.background import BackgroundTask
 
-from ultimate_rvc.common import AUDIO_DIR, TEMP_DIR, TRAINING_MODELS_DIR
+from ultimate_rvc.common import AUDIO_DIR, BASE_DIR, TEMP_DIR, TRAINING_MODELS_DIR
 from ultimate_rvc.control.jobs import (
     UPLOADS_DIR,
     create_job,
@@ -43,6 +46,18 @@ TRAINING_AUDIO_DIR = AUDIO_DIR / "training"
 app = FastAPI(title="RVC Training Control", docs_url=None, redoc_url=None)
 _login_failures: dict[str, deque[float]] = defaultdict(deque)
 _kaggle_setup_complete = False
+
+
+def _display_path(path: Path) -> str:
+    """Display paths relative to the runtime project root when possible."""
+    try:
+        return path.resolve().relative_to(BASE_DIR.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _remove_temp_file(path: str) -> None:
+    Path(path).unlink(missing_ok=True)
 
 
 def _secret() -> bytes:
@@ -284,7 +299,16 @@ def options() -> dict[str, Any]:
                 "stage_detail": snapshot.get("stage_detail", ""),
                 "error": snapshot.get("error", ""),
             }
-    return {"datasets": datasets, "models": models, "progress": progress, "gpus": gpus}
+    return {
+        "datasets": datasets,
+        "models": models,
+        "progress": progress,
+        "gpus": gpus,
+        "paths": {
+            "upload_root": _display_path(TRAINING_AUDIO_DIR),
+            "training_root": _display_path(TRAINING_MODELS_DIR),
+        },
+    }
 
 
 def _detect_gpus() -> list[dict[str, Any]]:
@@ -603,6 +627,39 @@ def download(model_name: str, kind: str) -> FileResponse:
     if not path.is_file():
         raise HTTPException(404, "文件不存在")
     return FileResponse(path, filename=path.name, media_type="application/octet-stream")
+
+
+@app.get("/api/v1/models/{model_name}/zip")
+def download_zip(model_name: str) -> FileResponse:
+    """Build a temporary delivery archive containing the three public files."""
+    try:
+        model_name = validate_model_name(model_name)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    model_dir = TRAINING_MODELS_DIR / model_name
+    files = delivery_files(model_dir, model_name)
+    missing = [path.name for path in files.values() if not path.is_file()]
+    if missing:
+        raise HTTPException(404, f"缺少可下载文件：{', '.join(missing)}")
+
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f"{model_name}-", suffix=".zip", dir=TEMP_DIR,
+    )
+    os.close(fd)
+    try:
+        with zipfile.ZipFile(temporary_name, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for path in files.values():
+                archive.write(path, arcname=path.name)
+    except Exception:
+        Path(temporary_name).unlink(missing_ok=True)
+        raise
+    return FileResponse(
+        temporary_name,
+        filename=f"{model_name}.zip",
+        media_type="application/zip",
+        background=BackgroundTask(_remove_temp_file, temporary_name),
+    )
 
 
 def main() -> None:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sys
-import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -35,37 +34,9 @@ def preprocess(params: dict[str, Any], started_at: float | None = None) -> None:
     model_dir.mkdir(parents=True, exist_ok=True)
     started = started_at or time.time()
 
-    # 快速过渡到 30（从准备环境阶段的 crawl 位置）
-    from ultimate_rvc.rvc.train.progress import read_progress as _read_prog
-    _cur = float((_read_prog(model_dir / "progress.json") or {}).get("percent", 0))
-    while _cur < 30.0:
-        _cur = min(30.0, _cur + 3.0)
-        update_progress(model_dir, phase="preprocessing", percent=_cur, stage_detail="正在加载预处理模块…", done=False)
-        time.sleep(0.3)
-
-    load_stop = threading.Event()
-
-    def _load_crawl() -> None:
-        pct = 30.0
-        while not load_stop.wait(0.5):
-            pct = min(49.0, pct + 3.0)
-            try:
-                update_progress(
-                    model_dir, phase="preprocessing",
-                    percent=pct,
-                    stage_detail="正在加载预处理模块…", done=False,
-                )
-            except Exception:
-                pass
-
-    loader = threading.Thread(target=_load_crawl, daemon=True)
-    loader.start()
     try:
         from ultimate_rvc.core.train.prepare import preprocess_dataset  # noqa: PLC0415
-    finally:
-        load_stop.set()
 
-    try:
         preprocess_dataset(
             params["model_name"], params["dataset"],
             TrainingSampleRate(int(params.get("sample_rate", 48000))),
@@ -94,29 +65,9 @@ def extract(params: dict[str, Any], started_at: float | None = None) -> None:
     model_dir = TRAINING_MODELS_DIR / params["model_name"]
     started = started_at or time.time()
 
-    load_stop = threading.Event()
-
-    def _load_crawl() -> None:
-        pct = 0.1
-        while not load_stop.wait(0.5):
-            pct = min(9.0, pct + 3.0)
-            try:
-                update_progress(
-                    model_dir, phase="extracting",
-                    percent=pct,
-                    stage_detail="正在加载特征提取模块…", done=False,
-                )
-            except Exception:
-                pass
-
-    loader = threading.Thread(target=_load_crawl, daemon=True)
-    loader.start()
     try:
         from ultimate_rvc.core.train.extract import extract_features  # noqa: PLC0415
-    finally:
-        load_stop.set()
 
-    try:
         extract_features(
             params["model_name"], F0Method(params.get("f0_method", "rmvpe")),
             EmbedderModel(params.get("embedder_model", "local-hubert-base")),
@@ -136,7 +87,7 @@ def extract(params: dict[str, Any], started_at: float | None = None) -> None:
     )
 
 
-def train(params: dict[str, Any]) -> Any:
+def train(params: dict[str, Any], started_at: float | None = None) -> Any:
     from ultimate_rvc.control.registry import mark_stage
     from ultimate_rvc.core.train.train import run_training
 
@@ -161,6 +112,7 @@ def train(params: dict[str, Any]) -> Any:
         PrecisionType(params.get("precision", "fp32")),
         bool(params.get("preload_dataset", False)),
         bool(params.get("reduce_memory_usage", False)),
+        started_at=started_at,
     )
     mark_stage(params["model_name"], "train", time.time() - started)
     return result
@@ -192,6 +144,7 @@ def run(job_id: str) -> None:
             "train": "training",
             "pipeline": "preprocessing",
         }.get(job["type"], "starting")
+        job_created_at = float(job.get("created_at") or time.time())
         prepared_at = time.time()
         update_progress(
             model_dir,
@@ -199,32 +152,10 @@ def run(job_id: str) -> None:
             percent=0.1,
             stage_detail="正在准备运行环境…",
             done=False,
-            started_at=prepared_at,
+            started_at=job_created_at,
             phase_started_at=prepared_at,
         )
-        prepare_stop = threading.Event()
-
-        def _crawl_progress() -> None:
-            step = 0
-            while not prepare_stop.wait(2.0):
-                step += 1
-                try:
-                    update_progress(
-                        model_dir,
-                        phase=initial_phase,
-                        percent=min(29.0, 0.1 + step * 0.1),
-                        stage_detail="正在准备运行环境…",
-                        done=False,
-                    )
-                except Exception:
-                    pass
-
-        crawler = threading.Thread(target=_crawl_progress, daemon=True)
-        crawler.start()
-        try:
-            ensure_models()
-        finally:
-            prepare_stop.set()
+        ensure_models()
         if job["type"] == "preprocess":
             update_job(job_id, stage="preprocessing")
             reset_stage(params["model_name"], "preprocess")
@@ -236,7 +167,7 @@ def run(job_id: str) -> None:
         elif job["type"] == "train":
             update_job(job_id, stage="training")
             reset_stage(params["model_name"], "train")
-            result = train(params)
+            result = train(params, started_at=job_created_at)
         else:
             update_job(job_id, stage="preprocessing")
             reset_stage(params["model_name"], "preprocess")
@@ -247,7 +178,7 @@ def run(job_id: str) -> None:
             extract(params, started_at=_stage_at)
             update_job(job_id, stage="training")
             reset_stage(params["model_name"], "train")
-            result = train(params)
+            result = train(params, started_at=job_created_at)
         if job["type"] in {"train", "pipeline"} and params.get("upload_kaggle", True):
             update_job(job_id, stage="uploading")
             from ultimate_rvc.control.kaggle_delivery import upload_model

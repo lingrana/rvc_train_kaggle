@@ -20,8 +20,6 @@ dependencies = [
   "requests==2.32.5",
   "kagglehub==1.0.2",
   "pyopenssl==24.3.0",
-  "yt_dlp[default]==2025.11.12",
-  "nodejs-wheel-binaries==24.12.0",
   "wget==3.2",
 
   # Data science
@@ -57,10 +55,7 @@ dependencies = [
   "soxr==1.0.0",
   "pydub==0.25.1",
   "pydub-stubs==0.25.1.6",
-  "pedalboard==0.9.19",
-  "audio-separator[gpu]==0.40.0",
   "noisereduce==3.0.3",
-  "edge-tts==7.2.7",
 ]
 
 [dependency-groups]
@@ -202,7 +197,6 @@ section-order = [
 "importing" = ["lazy_loader"]
 "networking" = [
   "requests",
-  "yt_dlp",
   "deemix",
   "wget",
   "flask",
@@ -229,13 +223,10 @@ section-order = [
   "librosa",
   "sox",
   "pydub",
-  "pedalboard",
-  "audio_separator",
   "parselmouth",
   "pyworld",
   "noisereduce",
   "audio_upscaler",
-  "edge_tts",
 ]
 "cli" = ["typer", "rich"]
 "ultimate_rvc" = ["ultimate_rvc"]

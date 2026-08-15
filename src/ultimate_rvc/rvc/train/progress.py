@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import json
+import math
 import time
 from pathlib import Path
 
@@ -28,9 +29,19 @@ TERMINAL_PHASES = frozenset({"completed", "stopped", "failed"})
 
 def _number(value: Any, default: float = 0) -> float:
     try:
-        return float(value)
+        number = float(value)
+        return number if math.isfinite(number) else default
     except (TypeError, ValueError):
         return default
+
+
+def _time_based_percent(state: dict[str, Any]) -> float | None:
+    """Estimate training progress from elapsed and remaining time."""
+    elapsed = _number(state.get("elapsed_seconds"), -1)
+    eta = _number(state.get("eta_seconds"), -1)
+    if elapsed < 0 or eta < 0 or elapsed + eta <= 0:
+        return None
+    return max(0.0, min(99.0, elapsed / (elapsed + eta) * 100.0))
 
 
 def read_progress(path: Path) -> dict[str, Any]:
@@ -61,6 +72,8 @@ def read_progress(path: Path) -> dict[str, Any]:
         0.0,
         min(100.0, _number(raw.get("percent"), epoch * 100 / total if total else 0)),
     )
+    raw.setdefault("elapsed_seconds", 0)
+    raw.setdefault("eta_seconds", 0)
     raw.setdefault("warning", "")
     raw.setdefault("error", "")
     raw.setdefault("recent_log", [])
@@ -92,6 +105,12 @@ def update_progress(model_dir: Path, **changes: Any) -> dict[str, Any]:
         if "elapsed_seconds" not in changes:
             started_at = _number(state.get("started_at", 0))
             state["elapsed_seconds"] = round(max(0.0, now - started_at), 1) if started_at else 0
+        if phase == "training":
+            time_percent = _time_based_percent(state)
+            if time_percent is not None:
+                state["percent"] = round(time_percent, 2)
+        elif phase == "completed":
+            state["percent"] = 100.0
         phase_started_at = _number(state.get("phase_started_at", 0))
         state["phase_elapsed_seconds"] = (
             round(max(0.0, now - phase_started_at), 1) if phase_started_at else 0
@@ -113,7 +132,11 @@ def update_progress(model_dir: Path, **changes: Any) -> dict[str, Any]:
         return state
 
 
-def initialize_progress(model_dir: Path, total_epochs: int) -> dict[str, Any]:
+def initialize_progress(
+    model_dir: Path,
+    total_epochs: int,
+    started_at: float | None = None,
+) -> dict[str, Any]:
     return update_progress(
         model_dir,
         phase="starting",
@@ -128,7 +151,7 @@ def initialize_progress(model_dir: Path, total_epochs: int) -> dict[str, Any]:
         error="",
         recent_log=[],
         done=False,
-        started_at=time.time(),
+        started_at=started_at or time.time(),
     )
 
 
