@@ -593,7 +593,7 @@ function renderStageCard(){
   let stages=reg.stages||{};
   if(job){const live=job.progress||{};snap.phase=live.phase||(job.phase==='queued'?'queued':snap.phase);snap.percent=live.percent;snap.epoch=live.epoch;snap.total_epochs=live.total_epochs;snap.loss_g=live.loss_g;snap.loss_d=live.loss_d;snap.best_epoch=live.best_epoch;snap.best_loss=live.best_loss;snap.error=live.error||snap.error;snap.elapsed_seconds=liveElapsed(live,job.created_at?Date.now()/1000-job.created_at:0);if(job.stages)stages=job.stages}
   const steps=[['preprocess','2 数据预处理'],['extract','3 特征提取'],['train','4 模型训练']];
-  const activeNames={queued:'preprocess',preprocessing:'preprocess',extracting:'extract',training:'train',indexing:'train',validating:'train',uploading:'train'};
+  const activeNames={queued:'preprocess',preprocessing:'preprocess',extracting:'extract',starting:'train',training:'train',indexing:'train',validating:'train',uploading:'train'};
   const jobStage=activeNames[(job&&job.stage)||'']||'';
   const active=activeNames[snap.phase||'']||jobStage;
   const failed=snap.phase==='failed'||snap.phase==='stopped';

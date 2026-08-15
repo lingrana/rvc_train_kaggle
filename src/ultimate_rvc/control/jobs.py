@@ -75,7 +75,15 @@ def refresh_job(job: dict[str, Any]) -> dict[str, Any]:
     phase = job.get("phase")
     alive = pid_alive(job.get("pid"))
     result_path = JOBS_DIR / str(job["id"]) / "result.json"
-    if phase in ACTIVE_PHASES and job.get("pid") and (result_path.is_file() or not alive):
+    result_exists = result_path.is_file()
+    if phase in ACTIVE_PHASES and job.get("pid") and alive and not result_exists and os.name != "nt":
+        try:
+            waited, _ = os.waitpid(int(job["pid"]), os.WNOHANG)
+            if waited:
+                alive = False
+        except (ChildProcessError, OSError, ValueError):
+            pass
+    if phase in ACTIVE_PHASES and job.get("pid") and (result_exists or not alive):
         try:
             result = json.loads(result_path.read_text("utf-8"))
         except (OSError, ValueError, TypeError):

@@ -3,12 +3,12 @@ import glob
 import json
 import logging
 import os
-import traceback
+import sys
 import warnings
 import pathlib
 import shutil
 import signal
-import sys
+import traceback
 from collections import deque
 from random import randint, shuffle
 from time import time as ttime
@@ -316,29 +316,99 @@ def main(
                 use_ddp=False,
             )
             return
+        # Multi-GPU DDP path: attempt DDP, fall back to single-GPU on failure.
         children = []
         pid_data = {"process_pids": []}
-        with pathlib.Path(config_save_path).open("r") as pid_file:
+        try:
+            with pathlib.Path(config_save_path).open("r") as pid_file:
+                try:
+                    existing_data = json.load(pid_file)
+                    pid_data.update(existing_data)
+                except json.JSONDecodeError:
+                    pass
+            with pathlib.Path(config_save_path).open("w") as pid_file:
+                for rank in range(n_gpus):
+                    subproc = mp.Process(
+                        target=run,
+                        args=(
+                            rank,
+                            n_gpus,
+                            experiment_dir,
+                            pretrain_g,
+                            pretrain_d,
+                            total_epoch,
+                            save_every_weights,
+                            config,
+                            device,
+                            rank,
+                            model_name,
+                            sample_rate,
+                            vocoder,
+                            batch_size,
+                            save_every_epoch,
+                            save_only_latest,
+                            overtraining_detector,
+                            overtraining_threshold,
+                            checkpointing,
+                            cache_data_in_gpu,
+                            global_gen_loss,
+                            global_disc_loss,
+                            train_dtype,
+                            version,
+                            f0_guidance,
+                            True,
+                        ),
+                    )
+                    children.append(subproc)
+                    subproc.start()
+                    pid_data["process_pids"].append(subproc.pid)
+                json.dump(pid_data, pid_file, indent=4)
+            cancel_signal = signal.SIGTERM if os.name == "nt" else -signal.SIGTERM
+            error_codes = []
+            for i in range(n_gpus):
+                children[i].join()
+                exit_code = children[i].exitcode
+                if exit_code != 0:
+                    logger.warning(
+                        "Process running on device %s exited with code %s.",
+                        i,
+                        exit_code,
+                    )
+                    if exit_code != cancel_signal:
+                        error_codes.append(exit_code)
             try:
-                existing_data = json.load(pid_file)
-                pid_data.update(existing_data)
-            except json.JSONDecodeError:
+                torch.cuda.empty_cache()
+            except Exception:
                 pass
-        with pathlib.Path(config_save_path).open("w") as pid_file:
-            for rank in range(n_gpus):
-                subproc = mp.Process(
-                    target=run,
-                    args=(
-                        rank,
-                        n_gpus,
+            try:
+                dist.destroy_process_group()
+            except Exception:
+                pass
+            print("[RVC] 所有训练进程已退出，GPU 资源已清理")
+            if error_codes:
+                # DDP failed - fall back to single GPU with first available
+                logger.warning(
+                    "Multi-GPU DDP failed (codes %s). Falling back to single GPU.",
+                    error_codes,
+                )
+                if n_gpus > 0 and children:
+                    # Kill any remaining children
+                    for child in children:
+                        if child.is_alive():
+                            child.terminate()
+                    # Fallback to single GPU on first available device
+                    single_fallback_device = torch.device("cuda", 0)
+                    run(
+                        0,
+                        1,
                         experiment_dir,
                         pretrain_g,
                         pretrain_d,
                         total_epoch,
                         save_every_weights,
                         config,
-                        device,
-                        rank,
+                        single_fallback_device,
+                        0,
                         model_name,
                         sample_rate,
                         vocoder,
@@ -354,41 +424,44 @@ def main(
                         train_dtype,
                         version,
                         f0_guidance,
-                        True,
-                    ),
-                )
-                children.append(subproc)
-                subproc.start()
-                pid_data["process_pids"].append(subproc.pid)
-            json.dump(pid_data, pid_file, indent=4)
-        cancel_signal = signal.SIGTERM if os.name == "nt" else -signal.SIGTERM
-        error_codes = []
-        for i in range(n_gpus):
-            children[i].join()
-            exit_code = children[i].exitcode
-            if exit_code != 0:
-                logger.warning(
-                    "Process running on device %s exited with code %s.",
-                    i,
-                    exit_code,
-                )
-                if exit_code != cancel_signal:
-                    error_codes.append(exit_code)
-        try:
-            torch.cuda.empty_cache()
-        except Exception:
-            pass
-        try:
-            dist.destroy_process_group()
-        except Exception:
-            pass
-        print("[RVC] 所有训练进程已退出，GPU 资源已清理")
-        if error_codes:
-            err_msg = (
-                "One or more training processes failed. See the logs or console for"
-                " details."
+                        use_ddp=False,
+                    )
+        except Exception as start_error:
+            logger.warning("DDP startup failed: %s. Falling back to single GPU.", start_error)
+            try:
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
+            # Fallback to single GPU
+            single_fallback_device = torch.device("cuda", 0)
+            run(
+                0,
+                1,
+                experiment_dir,
+                pretrain_g,
+                pretrain_d,
+                total_epoch,
+                save_every_weights,
+                config,
+                single_fallback_device,
+                0,
+                model_name,
+                sample_rate,
+                vocoder,
+                batch_size,
+                save_every_epoch,
+                save_only_latest,
+                overtraining_detector,
+                overtraining_threshold,
+                checkpointing,
+                cache_data_in_gpu,
+                global_gen_loss,
+                global_disc_loss,
+                train_dtype,
+                version,
+                f0_guidance,
+                use_ddp=False,
             )
-            raise RuntimeError(err_msg)
 
     if cleanup:
         logger.info("Removing files from the prior training attempt...")
@@ -452,7 +525,7 @@ def _run(
     version="v2",
     f0_guidance=True,
     use_ddp=True,
-):
+    ):
     """
     Runs the training loop on a specific GPU or CPU.
 
@@ -461,13 +534,22 @@ def _run(
         n_gpus (int): The total number of GPUs available for training.
         experiment_dir (str): The directory where experiment logs and checkpoints will be saved.
         pretrain_g (str): Path to the pre-trained generator model.
-        pretrain_d (str): Path to the pre-trained discriminator model.
+        pretrain_d (str): Path to the pre-trained discriminator of the model.
         custom_total_epoch (int): The total number of epochs for training.
         custom_save_every_weights (int): The interval (in epochs) at which to save model weights.
         config (object): Configuration object containing training parameters.
         device (torch.device): The device to use for training (CPU or GPU).
 
     """
+    # Clean up conflicting modules that may have been loaded by parent process
+    # These modules register CUDA drivers that cause segfaults on Kaggle GPUs
+    _CONFLICTING = frozenset({"jax", "jaxlib", "numba", "numba.core", "numba._dispatcher"})
+    for _m in list(sys.modules.keys()):
+        if _m in _CONFLICTING or _m.startswith("numba.") or _m.startswith("jax"):
+            try:
+                del sys.modules[_m]
+            except KeyError:
+                pass
     global global_step, optimizer, lowest_d_value, lowest_g_value, consecutive_increases_gen, consecutive_increases_disc, _stop_requested
 
     def _handle_stop(signum, frame):
@@ -487,12 +569,16 @@ def _run(
     # Aligned with the reference multi-GPU setup: always gloo (nccl can
     # segfault on shared/cloud GPU boxes) with libuv explicitly disabled.
     if use_ddp:
-        dist.init_process_group(
-            backend="gloo",
-            init_method="env://?use_libuv=False",
-            world_size=n_gpus,
-            rank=rank,
-        )
+        try:
+            dist.init_process_group(
+                backend="gloo",
+                init_method="env://?use_libuv=False",
+                world_size=n_gpus,
+                rank=rank,
+            )
+        except Exception as init_error:
+            logger.warning("DDP init failed (rank %d): %s. Running without DDP.", rank, init_error)
+            use_ddp = False
 
     torch.manual_seed(config.train.seed)
 
@@ -1023,7 +1109,7 @@ def train_and_evaluate(
                     update_progress(
                         pathlib.Path(experiment_dir),
                         phase="training",
-                        epoch=max(0, int(epoch) - 1),
+                        epoch=int(epoch),
                         batch=int(batch_idx) + 1,
                         total_batches=len(train_loader),
                         done=False,
@@ -1216,6 +1302,7 @@ def train_and_evaluate(
                 "total_epochs": int(custom_total_epoch),
                 "batch": 0,
                 "total_batches": len(train_loader),
+                "stage_detail": f"第 {int(epoch)}/{int(custom_total_epoch)} 轮 · G {round(float(avg_global_gen_loss), 4)} / D {round(float(avg_global_disc_loss), 4)}",
                 "loss_g": round(float(avg_global_gen_loss), 4),
                 "loss_d": round(float(avg_global_disc_loss), 4),
                 "best_loss": round(float(lowest_g_value_rounded), 4),
@@ -1363,7 +1450,7 @@ def _safe_cleanup(experiment_dir) -> None:
         cleanup_training_processes(experiment_dir)
     except Exception as e:
         print(f"[RVC] 清理时出错: {e}")
-    os._exit(0)
+    return
 
 
 def cleanup_training_processes(experiment_dir) -> None:

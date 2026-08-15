@@ -47,6 +47,19 @@ def test_mark_stage_without_timing_keeps_previous(registry_path):
     assert entry["stages"]["train"]["elapsed_seconds"] is None
 
 
+def test_reset_stage_clears_completion_on_rerun(registry_path):
+    registry.mark_stage("Demo", "preprocess", 123.0)
+    entry = registry.read_registry()["Demo"]
+    assert entry["stages"]["preprocess"]["done"] is True
+    registry.reset_stage("Demo", "preprocess")
+    entry = registry.read_registry()["Demo"]
+    stage = entry["stages"]["preprocess"]
+    assert stage["done"] is False
+    assert stage["finished_at"] is None
+    assert stage["elapsed_seconds"] is None
+    assert entry["stages"]["extract"]["done"] is False
+
+
 def test_invalid_stage_rejected(registry_path):
     with pytest.raises(ValueError):
         registry.mark_stage("Demo", "bogus")

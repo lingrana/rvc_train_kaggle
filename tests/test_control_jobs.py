@@ -1,9 +1,14 @@
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
 import uuid
 from pathlib import Path
+
+import pytest
 
 from ultimate_rvc.control import jobs
 
@@ -94,3 +99,19 @@ def test_concurrent_submissions_start_only_one_worker(
 
     assert len(started) == 1
     assert sorted(created for _, created in results) == [False, True]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="zombie reaping is POSIX-only")
+def test_refresh_reaps_crashed_worker_zombie(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(jobs, "JOBS_DIR", tmp_path / "jobs")
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    child.wait()
+    assert jobs.pid_alive(child.pid) is True
+    job_id = str(uuid.uuid4())
+    directory = jobs.JOBS_DIR / job_id
+    directory.mkdir(parents=True)
+    state = {"id": job_id, "phase": "running", "pid": child.pid, "params": {}, "created_at": 1}
+    (directory / "job.json").write_text(json.dumps(state), "utf-8")
+    result = jobs.read_job(job_id)
+    assert result["phase"] == "failed"
+    child.wait()

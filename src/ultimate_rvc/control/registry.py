@@ -86,6 +86,23 @@ def register_dataset(dataset: str) -> dict[str, Any]:
     return _normalize(entry)
 
 
+def reset_stage(model_name: str, stage: str) -> dict[str, Any]:
+    """Clear a stage's completion state so a re-run shows live progress again."""
+    model_name = validate_model_name(model_name)
+    if stage not in STAGE_KEYS:
+        raise ValueError(f"未知训练阶段: {stage}")
+    with _locked():
+        entries = read_registry()
+        entry = entries.get(model_name)
+        if entry is None:
+            return _normalize({"dataset": model_name, "created_at": time.time(), "stages": {}})
+        entry["stages"][stage] = dict(_STAGE_DEFAULTS)
+        entry["updated_at"] = time.time()
+        entries[model_name] = entry
+        _write_registry(entries)
+        return _normalize(entry)
+
+
 def mark_stage(model_name: str, stage: str, elapsed_seconds: float | None = None) -> dict[str, Any]:
     """Mark one pipeline stage as finished, recording its duration."""
     model_name = validate_model_name(model_name)

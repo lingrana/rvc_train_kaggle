@@ -41,6 +41,19 @@ def test_upload_phase_preserves_download_ready_state(tmp_path: Path) -> None:
     assert read_progress(tmp_path / "progress.json")["done"] is True
 
 
+def test_explicit_started_at_resets_elapsed_clocks(tmp_path: Path) -> None:
+    update_progress(tmp_path, phase="preprocessing", percent=50, done=False, started_at=1, phase_started_at=1)
+    stale = read_progress(tmp_path / "progress.json")
+    assert stale["elapsed_seconds"] > 0
+    now = time.time()
+    state = update_progress(
+        tmp_path, phase="preprocessing", percent=0.1, done=False,
+        started_at=now, phase_started_at=now,
+    )
+    assert state["elapsed_seconds"] < 1
+    assert state["phase_elapsed_seconds"] < 1
+
+
 def test_terminal_helpers_and_legacy_schema(tmp_path: Path) -> None:
     path = tmp_path / "progress.json"
     path.write_text(json.dumps({"epoch": 3, "total": 3, "done": True}), "utf-8")

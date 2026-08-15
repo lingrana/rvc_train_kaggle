@@ -35,16 +35,20 @@ def preprocess(params: dict[str, Any]) -> None:
     model_dir = TRAINING_MODELS_DIR / params["model_name"]
     model_dir.mkdir(parents=True, exist_ok=True)
     started = time.time()
-    preprocess_dataset(
-        params["model_name"], params["dataset"],
-        TrainingSampleRate(int(params.get("sample_rate", 48000))),
-        AudioNormalizationMode(params.get("normalization_mode", "post")),
-        bool(params.get("filter_audio", True)), bool(params.get("clean_audio", False)),
-        float(params.get("clean_strength", 0.7)),
-        AudioSplitMethod(params.get("split_method", "Automatic")),
-        float(params.get("chunk_len", 3.0)), float(params.get("overlap_len", 0.3)),
-        int(params.get("preprocess_cores", params.get("cpu_cores", 2))),
-    )
+    try:
+        preprocess_dataset(
+            params["model_name"], params["dataset"],
+            TrainingSampleRate(int(params.get("sample_rate", 48000))),
+            AudioNormalizationMode(params.get("normalization_mode", "post")),
+            bool(params.get("filter_audio", True)), bool(params.get("clean_audio", False)),
+            float(params.get("clean_strength", 0.7)),
+            AudioSplitMethod(params.get("split_method", "Automatic")),
+            float(params.get("chunk_len", 3.0)), float(params.get("overlap_len", 0.3)),
+            int(params.get("preprocess_cores", params.get("cpu_cores", 2))),
+        )
+    except Exception:
+        update_progress(model_dir, phase="failed", stage_detail="预处理失败", done=False)
+        raise
     elapsed = time.time() - started
     mark_stage(params["model_name"], "preprocess", elapsed)
     update_progress(
@@ -60,15 +64,19 @@ def extract(params: dict[str, Any]) -> None:
 
     model_dir = TRAINING_MODELS_DIR / params["model_name"]
     started = time.time()
-    extract_features(
-        params["model_name"], F0Method(params.get("f0_method", "rmvpe")),
-        EmbedderModel(params.get("embedder_model", "local-hubert-base")),
-        params.get("custom_embedder_model") or None,
-        int(params.get("include_mutes", 2)),
-        int(params.get("extraction_cores", params.get("cpu_cores", 2))),
-        DeviceType(params.get("extraction_device", params.get("device", "Automatic"))),
-        set(params.get("extraction_gpu_ids", params.get("gpu_ids", []))) or None,
-    )
+    try:
+        extract_features(
+            params["model_name"], F0Method(params.get("f0_method", "rmvpe")),
+            EmbedderModel(params.get("embedder_model", "local-hubert-base")),
+            params.get("custom_embedder_model") or None,
+            int(params.get("include_mutes", 2)),
+            int(params.get("extraction_cores", params.get("cpu_cores", 2))),
+            DeviceType(params.get("extraction_device", params.get("device", "Automatic"))),
+            set(params.get("extraction_gpu_ids", params.get("gpu_ids", []))) or None,
+        )
+    except Exception:
+        update_progress(model_dir, phase="failed", stage_detail="特征提取失败", done=False)
+        raise
     elapsed = time.time() - started
     mark_stage(params["model_name"], "extract", elapsed)
     update_progress(
@@ -121,6 +129,7 @@ def run(job_id: str) -> None:
     params = job["params"]
     try:
         from ultimate_rvc.common import TRAINING_MODELS_DIR
+        from ultimate_rvc.control.registry import reset_stage
         from ultimate_rvc.rvc.train.progress import update_progress
 
         model_dir = TRAINING_MODELS_DIR / str(params.get("model_name", ""))
@@ -131,12 +140,15 @@ def run(job_id: str) -> None:
             "train": "training",
             "pipeline": "preprocessing",
         }.get(job["type"], "starting")
+        prepared_at = time.time()
         update_progress(
             model_dir,
             phase=initial_phase,
             percent=0.1,
             stage_detail="正在准备运行环境…",
             done=False,
+            started_at=prepared_at,
+            phase_started_at=prepared_at,
         )
         prepare_stop = threading.Event()
 
@@ -162,19 +174,25 @@ def run(job_id: str) -> None:
             prepare_stop.set()
         if job["type"] == "preprocess":
             update_job(job_id, stage="preprocessing")
+            reset_stage(params["model_name"], "preprocess")
             result = preprocess(params)
         elif job["type"] == "extract":
             update_job(job_id, stage="extracting")
+            reset_stage(params["model_name"], "extract")
             result = extract(params)
         elif job["type"] == "train":
             update_job(job_id, stage="training")
+            reset_stage(params["model_name"], "train")
             result = train(params)
         else:
             update_job(job_id, stage="preprocessing")
+            reset_stage(params["model_name"], "preprocess")
             preprocess(params)
             update_job(job_id, stage="extracting")
+            reset_stage(params["model_name"], "extract")
             extract(params)
             update_job(job_id, stage="training")
+            reset_stage(params["model_name"], "train")
             result = train(params)
         if job["type"] in {"train", "pipeline"} and params.get("upload_kaggle", True):
             update_job(job_id, stage="uploading")

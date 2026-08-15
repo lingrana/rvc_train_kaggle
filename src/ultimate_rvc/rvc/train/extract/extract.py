@@ -156,7 +156,7 @@ def run_pitch_extraction(
         f0_method,
     )
     start_time = time.time()
-    total_files = sum(len(part) for part in files)
+    total_files = len(files)
     done_files = 0
     last_report = 0.0
     done_path = os.path.join(model_dir, ".extract_done_pitch")
@@ -265,7 +265,7 @@ def run_embedding_extraction(
         devices_str,
     )
     start_time = time.time()
-    total_files = sum(len(part) for part in files)
+    total_files = len(files)
     done_files = 0
     last_report = 0.0
     done_path = os.path.join(model_dir, ".extract_done_embed")
