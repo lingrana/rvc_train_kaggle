@@ -250,7 +250,7 @@ footer a:hover{color:var(--accent)}
       </div>
     </div>
 
-    <div class="section" id="upload-section" style="display:none">
+    <div class="section" id="upload-section">
       <div class="section-header"><span class="section-num">02</span><span class="section-title">上传音频</span></div>
       <div class="upload" id="upload-zone" onclick="pickFiles()">
         <div class="upload-icon">🎙️</div>
@@ -458,7 +458,7 @@ footer a:hover{color:var(--accent)}
 <footer><a href="https://github.com/lingrana/rvc_train_kaggle" target="_blank">© 2026 lingran · 用心打造每一个项目</a></footer>
 
 <script>
-const state={etag:'',timer:null,failures:0,lastJobs:[],uploading:false,selectedValues:{},gpus:[],registry:{},progressSnap:{}};
+const state={etag:'',timer:null,failures:0,lastJobs:[],uploading:false,datasetConfirmed:false,selectedValues:{},gpus:[],registry:{},progressSnap:{}};
 const $=s=>document.querySelector(s);
 const text=(el,v)=>{if(el)el.textContent=v};
 function notice(msg){const el=$('#notice');text(el,msg);el.classList.toggle('show',!!msg)}
@@ -550,8 +550,8 @@ function confirmDataset(){
   selectModel('model',ds);
   state.registry[ds]=state.registry[ds]||{stages:{preprocess:{done:false},extract:{done:false},train:{done:false}},last_phase:''};
   renderStageCard();
-  const us=$('#upload-section');if(us)us.style.display='';
-  notice('数据集已确定：'+ds+'，当前模型已更新');
+  state.datasetConfirmed=true;
+  notice('数据集已确定：'+ds+'，可以上传音频了');
   api('/api/v1/datasets/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:ds})}).then(()=>loadOptions()).catch(()=>{});
 }
 function checked(fieldId){return $('[data-field="'+fieldId+'"]').classList.contains('on')}
@@ -571,8 +571,8 @@ $('#upload-zone').addEventListener('dragleave',()=>$('#upload-zone').classList.r
 $('#upload-zone').addEventListener('drop',e=>{e.preventDefault();$('#upload-zone').classList.remove('dragover');handleFiles(e.dataTransfer.files)});
 $('#file-input').addEventListener('change',e=>handleFiles(e.target.files));
 
-function pickFiles(){const dataset=selectedDataset()||$('#dataset').value.trim();if(!dataset){notice('请先确定数据集：新建需填写数据集名称，或选择现有数据集');$('#upload-tip').textContent='⚠ 请先确定数据集再上传音频';$('#upload-tip').style.display='';return}$('#file-input').click()}
-async function handleFiles(files){const filesList=[...files],dataset=selectedDataset()||$('#dataset').value.trim();if(!filesList.length)return;if(!dataset){notice('请先确定数据集：新建需填写数据集名称，或选择现有数据集');$('#upload-tip').textContent='⚠ 请先确定数据集再上传音频';$('#upload-tip').style.display='';return}state.uploading=true;notice('');let allOk=true;for(const file of filesList){const row=document.createElement('div');row.className='upload-row';const name=document.createElement('strong');name.textContent=file.name;const bar=document.createElement('div');bar.className='bar';bar.innerHTML='<i></i>';const status=document.createElement('span');status.className='upload-status';status.textContent='上传中';status.style.cssText='font-size:11px;color:var(--text-muted);white-space:nowrap';row.append(name,bar,status);$('#uploads').append(row);try{await uploadFile(file,dataset,row)}catch(err){status.textContent=err.message;status.style.color='var(--red)';allOk=false}}state.uploading=false;if(allOk){const tip=$('#upload-tip');tip.textContent='✅ 已上传 '+filesList.length+' 个文件';tip.style.display='';setTimeout(()=>tip.style.display='none',5000);if(dataset)loadFiles(dataset)}}
+function pickFiles(){if(!state.datasetConfirmed){notice('请先在上方点击「确定」按钮确认数据集名称');return}const dataset=selectedDataset()||$('#dataset').value.trim();if(!dataset){notice('请先确认数据集名称');return}$('#file-input').click()}
+async function handleFiles(files){if(!state.datasetConfirmed){notice('请先在上方点击「确定」按钮确认数据集名称');return}const filesList=[...files],dataset=selectedDataset()||$('#dataset').value.trim();if(!filesList.length)return;if(!dataset){notice('请先确认数据集名称');return}state.uploading=true;notice('');let allOk=true;for(const file of filesList){const row=document.createElement('div');row.className='upload-row';const name=document.createElement('strong');name.textContent=file.name;const bar=document.createElement('div');bar.className='bar';bar.innerHTML='<i></i>';const status=document.createElement('span');status.className='upload-status';status.textContent='上传中';status.style.cssText='font-size:11px;color:var(--text-muted);white-space:nowrap';row.append(name,bar,status);$('#uploads').append(row);try{await uploadFile(file,dataset,row)}catch(err){status.textContent=err.message;status.style.color='var(--red)';allOk=false}}state.uploading=false;if(allOk){const tip=$('#upload-tip');tip.textContent='✅ 已上传 '+filesList.length+' 个文件';tip.style.display='';setTimeout(()=>tip.style.display='none',5000);if(dataset)loadFiles(dataset)}}
 
 const fmt=s=>{s=Math.max(0,Math.round(Number(s)||0));return[Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(x=>String(x).padStart(2,'0')).join(':')};
 

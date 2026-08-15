@@ -29,13 +29,34 @@ from ultimate_rvc.typing_extra import (
 def preprocess(params: dict[str, Any], started_at: float | None = None) -> None:
     from ultimate_rvc.common import TRAINING_MODELS_DIR
     from ultimate_rvc.control.registry import mark_stage
-    from ultimate_rvc.core.train.prepare import preprocess_dataset
     from ultimate_rvc.rvc.train.progress import update_progress
 
     model_dir = TRAINING_MODELS_DIR / params["model_name"]
     model_dir.mkdir(parents=True, exist_ok=True)
     started = started_at or time.time()
-    update_progress(model_dir, phase="preprocessing", percent=2, stage_detail="正在加载预处理模块…", done=False)
+
+    load_stop = threading.Event()
+
+    def _load_crawl() -> None:
+        step = 0
+        while not load_stop.wait(1.0):
+            step += 1
+            try:
+                update_progress(
+                    model_dir, phase="preprocessing",
+                    percent=min(49.0, 30.0 + step * 0.5),
+                    stage_detail="正在加载预处理模块…", done=False,
+                )
+            except Exception:
+                pass
+
+    loader = threading.Thread(target=_load_crawl, daemon=True)
+    loader.start()
+    try:
+        from ultimate_rvc.core.train.prepare import preprocess_dataset  # noqa: PLC0415
+    finally:
+        load_stop.set()
+
     try:
         preprocess_dataset(
             params["model_name"], params["dataset"],
@@ -60,12 +81,33 @@ def preprocess(params: dict[str, Any], started_at: float | None = None) -> None:
 def extract(params: dict[str, Any], started_at: float | None = None) -> None:
     from ultimate_rvc.common import TRAINING_MODELS_DIR
     from ultimate_rvc.control.registry import mark_stage
-    from ultimate_rvc.core.train.extract import extract_features
     from ultimate_rvc.rvc.train.progress import update_progress
 
     model_dir = TRAINING_MODELS_DIR / params["model_name"]
     started = started_at or time.time()
-    update_progress(model_dir, phase="extracting", percent=1, stage_detail="正在加载特征提取模块…", done=False)
+
+    load_stop = threading.Event()
+
+    def _load_crawl() -> None:
+        step = 0
+        while not load_stop.wait(1.0):
+            step += 1
+            try:
+                update_progress(
+                    model_dir, phase="extracting",
+                    percent=min(9.0, 0.1 + step * 0.5),
+                    stage_detail="正在加载特征提取模块…", done=False,
+                )
+            except Exception:
+                pass
+
+    loader = threading.Thread(target=_load_crawl, daemon=True)
+    loader.start()
+    try:
+        from ultimate_rvc.core.train.extract import extract_features  # noqa: PLC0415
+    finally:
+        load_stop.set()
+
     try:
         extract_features(
             params["model_name"], F0Method(params.get("f0_method", "rmvpe")),
@@ -162,7 +204,8 @@ def run(job_id: str) -> None:
                     update_progress(
                         model_dir,
                         phase=initial_phase,
-                        percent=min(1.0, 0.1 + step * 0.1),
+                        percent=min(29.0, 0.1 + step * 0.1),
+                        stage_detail="正在准备运行环境…",
                         done=False,
                     )
                 except Exception:

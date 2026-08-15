@@ -8,6 +8,7 @@ import pathlib
 from pathlib import Path
 import shutil
 import sys
+import threading
 import time
 
 import soxr
@@ -340,20 +341,19 @@ def preprocess_training_set(
     pp = PreProcess(sr, exp_dir)
     logger.info("Starting preprocess with %d processes...", num_processes)
 
-    candidate_count = sum(
-        1 for _, _, fnames in os.walk(input_root) for _ in fnames
-    )
+    # --- C+D: 初始化+扫描文件 (50→70) ---
     update_progress(
         Path(exp_dir),
         phase="preprocessing",
-        percent=1,
-        stage_detail=f"扫描文件 0/{candidate_count}",
+        percent=50,
+        stage_detail="扫描文件…",
         done=False,
     )
 
     files = []
     idx = 0
     scanned = 0
+    _scan_pct = 50.0
     last_scan_report = time.time()
 
     for root, _, filenames in os.walk(input_root):
@@ -364,14 +364,14 @@ def preprocess_training_set(
                 audio_info = pydub_utils.mediainfo(f_path)
                 scanned += 1
                 now_time = time.time()
-                if now_time - last_scan_report >= 0.5:
+                if now_time - last_scan_report >= 2.0:
                     last_scan_report = now_time
-                    scan_pct = 1 + scanned * 4 / max(candidate_count, 1)
+                    _scan_pct = min(69.0, _scan_pct + 0.1)
                     update_progress(
                         Path(exp_dir),
                         phase="preprocessing",
-                        percent=min(4.9, scan_pct),
-                        stage_detail=f"扫描文件 {scanned}/{candidate_count}",
+                        percent=_scan_pct,
+                        stage_detail=f"扫描文件 {scanned}",
                         done=False,
                     )
                 if audio_info["format_name"] in {
@@ -418,22 +418,43 @@ def preprocess_training_set(
                 os.path.basename(root),
             )
 
-    # print(f"Number of files: {len(files)}")
+    # --- E: 切片处理 (70→100) ---
     audio_length = []
     total_files = len(files)
     done_files = 0
-    last_report = 0.0
+    _slice_pct = 70.0
 
-    if total_files:
-        update_progress(
-            Path(exp_dir),
-            phase="preprocessing",
-            percent=5,
-            stage_detail=f"切片 0/{total_files}",
-            done=False,
-        )
+    update_progress(
+        Path(exp_dir),
+        phase="preprocessing",
+        percent=70,
+        stage_detail=f"切片 0/{total_files}",
+        done=False,
+    )
 
     remove_sox_libmso6_from_ld_preload()
+
+    _slice_stop = threading.Event()
+
+    def _slice_crawl() -> None:
+        nonlocal _slice_pct
+        while not _slice_stop.wait(2.0):
+            _slice_pct = min(99.0, _slice_pct + 0.1)
+            try:
+                update_progress(
+                    Path(exp_dir),
+                    phase="preprocessing",
+                    percent=_slice_pct,
+                    stage_detail=f"切片 {done_files}/{total_files}",
+                    done=False,
+                )
+            except Exception:
+                pass
+
+    crawler = threading.Thread(target=_slice_crawl, daemon=True)
+    if total_files:
+        crawler.start()
+
     with (
         tqdm(total=total_files) as pbar,
         concurrent.futures.ProcessPoolExecutor(max_workers=num_processes) as executor,
@@ -459,19 +480,8 @@ def preprocess_training_set(
             audio_length.append(future.result())
             pbar.update(1)
             done_files += 1
-            now_time = time.time()
-            if total_files and (
-                now_time - last_report >= 0.5 or done_files == total_files
-            ):
-                last_report = now_time
-                percent = max(5, min(99.9, 5 + done_files * 95 / total_files))
-                update_progress(
-                    Path(exp_dir),
-                    phase="preprocessing",
-                    percent=percent,
-                    stage_detail=f"切片 {done_files}/{total_files}",
-                    done=False,
-                )
+
+    _slice_stop.set()
 
     audio_length = sum(audio_length)
     save_dataset_duration_and_sample_rate(
