@@ -342,13 +342,16 @@ def preprocess_training_set(
     logger.info("Starting preprocess with %d processes...", num_processes)
 
     # --- C+D: 初始化+扫描文件 (50→70) ---
-    update_progress(
-        Path(exp_dir),
-        phase="preprocessing",
-        percent=50,
-        stage_detail="扫描文件…",
-        done=False,
-    )
+    # 快速过渡到 50
+    from ultimate_rvc.rvc.train.progress import read_progress as _read_prog
+    _cur = float((_read_prog(Path(exp_dir) / "progress.json") or {}).get("percent", 0))
+    while _cur < 50.0:
+        _cur = min(50.0, _cur + 3.0)
+        update_progress(
+            Path(exp_dir), phase="preprocessing", percent=_cur,
+            stage_detail="扫描文件…", done=False,
+        )
+        time.sleep(0.3)
 
     files = []
     idx = 0
@@ -422,18 +425,23 @@ def preprocess_training_set(
     audio_length = []
     total_files = len(files)
     done_files = 0
-    _slice_pct = 70.0
 
-    update_progress(
-        Path(exp_dir),
-        phase="preprocessing",
-        percent=70,
-        stage_detail=f"切片 0/{total_files}",
-        done=False,
-    )
+    # 快速过渡到 70
+    _trans_pct = _scan_pct
+    while _trans_pct < 70.0:
+        _trans_pct = min(70.0, _trans_pct + 3.0)
+        update_progress(
+            Path(exp_dir),
+            phase="preprocessing",
+            percent=_trans_pct,
+            stage_detail=f"切片 0/{total_files}",
+            done=False,
+        )
+        time.sleep(0.3)
 
     remove_sox_libmso6_from_ld_preload()
 
+    _slice_pct = 70.0
     _slice_stop = threading.Event()
 
     def _slice_crawl() -> None:

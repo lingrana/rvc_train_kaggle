@@ -35,16 +35,24 @@ def preprocess(params: dict[str, Any], started_at: float | None = None) -> None:
     model_dir.mkdir(parents=True, exist_ok=True)
     started = started_at or time.time()
 
+    # 快速过渡到 30（从准备环境阶段的 crawl 位置）
+    from ultimate_rvc.rvc.train.progress import read_progress as _read_prog
+    _cur = float((_read_prog(model_dir / "progress.json") or {}).get("percent", 0))
+    while _cur < 30.0:
+        _cur = min(30.0, _cur + 3.0)
+        update_progress(model_dir, phase="preprocessing", percent=_cur, stage_detail="正在加载预处理模块…", done=False)
+        time.sleep(0.3)
+
     load_stop = threading.Event()
 
     def _load_crawl() -> None:
-        step = 0
-        while not load_stop.wait(1.0):
-            step += 1
+        pct = 30.0
+        while not load_stop.wait(0.5):
+            pct = min(49.0, pct + 3.0)
             try:
                 update_progress(
                     model_dir, phase="preprocessing",
-                    percent=min(49.0, 30.0 + step * 0.5),
+                    percent=pct,
                     stage_detail="正在加载预处理模块…", done=False,
                 )
             except Exception:
@@ -89,13 +97,13 @@ def extract(params: dict[str, Any], started_at: float | None = None) -> None:
     load_stop = threading.Event()
 
     def _load_crawl() -> None:
-        step = 0
-        while not load_stop.wait(1.0):
-            step += 1
+        pct = 0.1
+        while not load_stop.wait(0.5):
+            pct = min(9.0, pct + 3.0)
             try:
                 update_progress(
                     model_dir, phase="extracting",
-                    percent=min(9.0, 0.1 + step * 0.5),
+                    percent=pct,
                     stage_detail="正在加载特征提取模块…", done=False,
                 )
             except Exception:

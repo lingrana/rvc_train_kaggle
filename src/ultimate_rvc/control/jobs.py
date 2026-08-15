@@ -186,6 +186,9 @@ def create_job(kind: str, params: dict[str, Any], idempotency_key: str = "") -> 
         # which conflict with PyTorch's CUDA context and cause segfaults.
         environment["NUMBA_DISABLE_CUDA"] = "1"
         environment["JAX_PLATFORMS"] = "cpu"
+        # Disable torch.compile / dynamo — its lazy import of triton segfaults
+        # on Kaggle due to incompatible triton C extensions.
+        environment["TORCHDYNAMO_DISABLE"] = "1"
         command = [sys.executable, "-m", "ultimate_rvc.control.worker", job_id]
         log = (job_dir / "worker.log").open("a", encoding="utf-8")
         flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0

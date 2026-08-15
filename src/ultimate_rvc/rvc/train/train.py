@@ -705,6 +705,14 @@ def _run(
         except Exception as mem_err:
             logger.warning("Could not query GPU memory: %s", mem_err)
 
+    # Prevent triton segfault on Kaggle — its C extensions are incompatible.
+    # Monkey-patch has_triton_package before torch.optim triggers _dynamo import.
+    try:
+        import torch.utils._triton as _triton_mod
+        _triton_mod.has_triton_package = lambda: False  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
     try:
         optim_g = optimizer(
             net_g.parameters(),
