@@ -26,7 +26,7 @@ from ultimate_rvc.typing_extra import (
 )
 
 
-def preprocess(params: dict[str, Any]) -> None:
+def preprocess(params: dict[str, Any], started_at: float | None = None) -> None:
     from ultimate_rvc.common import TRAINING_MODELS_DIR
     from ultimate_rvc.control.registry import mark_stage
     from ultimate_rvc.core.train.prepare import preprocess_dataset
@@ -34,7 +34,8 @@ def preprocess(params: dict[str, Any]) -> None:
 
     model_dir = TRAINING_MODELS_DIR / params["model_name"]
     model_dir.mkdir(parents=True, exist_ok=True)
-    started = time.time()
+    started = started_at or time.time()
+    update_progress(model_dir, phase="preprocessing", percent=2, stage_detail="正在加载预处理模块…", done=False)
     try:
         preprocess_dataset(
             params["model_name"], params["dataset"],
@@ -56,14 +57,15 @@ def preprocess(params: dict[str, Any]) -> None:
     )
 
 
-def extract(params: dict[str, Any]) -> None:
+def extract(params: dict[str, Any], started_at: float | None = None) -> None:
     from ultimate_rvc.common import TRAINING_MODELS_DIR
     from ultimate_rvc.control.registry import mark_stage
     from ultimate_rvc.core.train.extract import extract_features
     from ultimate_rvc.rvc.train.progress import update_progress
 
     model_dir = TRAINING_MODELS_DIR / params["model_name"]
-    started = time.time()
+    started = started_at or time.time()
+    update_progress(model_dir, phase="extracting", percent=1, stage_detail="正在加载特征提取模块…", done=False)
     try:
         extract_features(
             params["model_name"], F0Method(params.get("f0_method", "rmvpe")),
@@ -175,11 +177,11 @@ def run(job_id: str) -> None:
         if job["type"] == "preprocess":
             update_job(job_id, stage="preprocessing")
             reset_stage(params["model_name"], "preprocess")
-            result = preprocess(params)
+            result = preprocess(params, started_at=prepared_at)
         elif job["type"] == "extract":
             update_job(job_id, stage="extracting")
             reset_stage(params["model_name"], "extract")
-            result = extract(params)
+            result = extract(params, started_at=prepared_at)
         elif job["type"] == "train":
             update_job(job_id, stage="training")
             reset_stage(params["model_name"], "train")
@@ -187,10 +189,11 @@ def run(job_id: str) -> None:
         else:
             update_job(job_id, stage="preprocessing")
             reset_stage(params["model_name"], "preprocess")
-            preprocess(params)
+            preprocess(params, started_at=prepared_at)
+            _stage_at = time.time()
             update_job(job_id, stage="extracting")
             reset_stage(params["model_name"], "extract")
-            extract(params)
+            extract(params, started_at=_stage_at)
             update_job(job_id, stage="training")
             reset_stage(params["model_name"], "train")
             result = train(params)

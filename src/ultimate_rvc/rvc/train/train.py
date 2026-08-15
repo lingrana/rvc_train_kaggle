@@ -541,15 +541,12 @@ def _run(
         device (torch.device): The device to use for training (CPU or GPU).
 
     """
-    # Clean up conflicting modules that may have been loaded by parent process
-    # These modules register CUDA drivers that cause segfaults on Kaggle GPUs
+    # Log conflicting modules that may interfere with CUDA — do NOT delete
+    # loaded modules as that can corrupt an already-initialized CUDA context
     _CONFLICTING = frozenset({"jax", "jaxlib", "numba", "numba.core", "numba._dispatcher"})
-    for _m in list(sys.modules.keys()):
-        if _m in _CONFLICTING or _m.startswith("numba.") or _m.startswith("jax"):
-            try:
-                del sys.modules[_m]
-            except KeyError:
-                pass
+    _found = [_m for _m in sys.modules if _m in _CONFLICTING or _m.startswith("numba.") or _m.startswith("jax")]
+    if _found:
+        logger.warning("Potentially conflicting modules detected (not removed): %s", _found)
     global global_step, optimizer, lowest_d_value, lowest_g_value, consecutive_increases_gen, consecutive_increases_disc, _stop_requested
 
     def _handle_stop(signum, frame):
@@ -698,18 +695,38 @@ def _run(
         logger.info("Using AdamW optimizer")
         optimizer = torch.optim.AdamW
 
-    optim_g = optimizer(
-        net_g.parameters(),
-        config.train.learning_rate * g_lr_coeff,
-        betas=config.train.betas,
-        eps=config.train.eps,
-    )
-    optim_d = optimizer(
-        net_d.parameters(),
-        config.train.learning_rate * d_lr_coeff,
-        betas=config.train.betas,
-        eps=config.train.eps,
-    )
+    if device.type == "cuda":
+        try:
+            free_mem, total_mem = torch.cuda.mem_get_info(device_id)
+            logger.info(
+                "GPU %d memory before optimizer: free=%d MiB total=%d MiB",
+                device_id, free_mem // (1024 * 1024), total_mem // (1024 * 1024),
+            )
+        except Exception as mem_err:
+            logger.warning("Could not query GPU memory: %s", mem_err)
+
+    try:
+        optim_g = optimizer(
+            net_g.parameters(),
+            config.train.learning_rate * g_lr_coeff,
+            betas=config.train.betas,
+            eps=config.train.eps,
+        )
+        optim_d = optimizer(
+            net_d.parameters(),
+            config.train.learning_rate * d_lr_coeff,
+            betas=config.train.betas,
+            eps=config.train.eps,
+        )
+    except Exception as optim_err:
+        logger.error("Optimizer creation failed: %s", optim_err)
+        if device.type == "cuda":
+            try:
+                free_mem, total_mem = torch.cuda.mem_get_info(device_id)
+                logger.error("GPU %d: free=%d MiB total=%d MiB", device_id, free_mem // (1024 * 1024), total_mem // (1024 * 1024))
+            except Exception:
+                pass
+        raise
 
     # Wrap models with DDP for multi-gpu processing
     if use_ddp and device.type == "cuda":

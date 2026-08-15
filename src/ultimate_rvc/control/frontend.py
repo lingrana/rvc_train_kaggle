@@ -250,7 +250,7 @@ footer a:hover{color:var(--accent)}
       </div>
     </div>
 
-    <div class="section">
+    <div class="section" id="upload-section" style="display:none">
       <div class="section-header"><span class="section-num">02</span><span class="section-title">上传音频</span></div>
       <div class="upload" id="upload-zone" onclick="pickFiles()">
         <div class="upload-icon">🎙️</div>
@@ -550,6 +550,7 @@ function confirmDataset(){
   selectModel('model',ds);
   state.registry[ds]=state.registry[ds]||{stages:{preprocess:{done:false},extract:{done:false},train:{done:false}},last_phase:''};
   renderStageCard();
+  const us=$('#upload-section');if(us)us.style.display='';
   notice('数据集已确定：'+ds+'，当前模型已更新');
   api('/api/v1/datasets/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:ds})}).then(()=>loadOptions()).catch(()=>{});
 }
