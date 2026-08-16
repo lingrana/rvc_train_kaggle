@@ -33,8 +33,9 @@ class ControlFrontendTest(unittest.TestCase):
         self.assertIn("model.kaggle_url", HTML)
         self.assertIn("打开 Kaggle Dataset", HTML)
         self.assertNotIn("'/api/v1/models/'+encodeURIComponent(name)+'/zip'", HTML)
-        self.assertIn("const e=Number(live&&live.elapsed_seconds)", HTML)
-        self.assertIn("return m[phase]||snap.phase_label||phase", HTML)
+        self.assertIn("const st=Number(live&&live.phase_started_at)", HTML)
+        self.assertIn("if(snap.phase_label)return snap.phase_label", HTML)
+        self.assertIn("upload_failed", HTML)
 
 
 class ControlApiTest(unittest.IsolatedAsyncioTestCase):

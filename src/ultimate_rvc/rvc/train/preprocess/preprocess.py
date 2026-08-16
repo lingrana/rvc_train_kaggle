@@ -378,6 +378,27 @@ def preprocess_training_set(
                 time.sleep(0.1)
         return result
 
+    def _simulate_segment(
+        start: float,
+        target: float,
+        label: str,
+        detail,
+        hold_seconds: float,
+    ) -> None:
+        """Simulate a segment with no real work: crawl +0.1 every 2s for a
+        fixed hold, then fast-forward +3 every 0.1s to the segment end."""
+        current = start
+        deadline = time.monotonic() + hold_seconds
+        while time.monotonic() < deadline:
+            current = min(target - 0.1, current + 0.1)
+            _set_progress(current, label, detail())
+            time.sleep(2.0)
+        while current < target:
+            current = min(target, current + 3.0)
+            _set_progress(current, label, detail())
+            if current < target:
+                time.sleep(0.1)
+
     files = []
     idx = 0
     scanned = 0
@@ -428,13 +449,13 @@ def preprocess_training_set(
                 )
 
     _run_slow_phase(0.0, 30.0, "扫描文件", lambda: f"扫描文件 {scanned}", _scan_files)
-    _set_progress(30.0, "准备切片", f"已找到 {len(files)} 个音频文件")
-    _current = 30.0
-    while _current < 50.0:
-        _current = min(50.0, _current + 3.0)
-        _set_progress(_current, "准备切片", f"已找到 {len(files)} 个音频文件")
-        if _current < 50.0:
-            time.sleep(0.1)
+    _simulate_segment(
+        30.0,
+        50.0,
+        "准备切片",
+        lambda: f"已找到 {len(files)} 个音频文件",
+        hold_seconds=8.0,
+    )
 
     # --- E: 切片处理 (50→70) ---
     audio_length = []
@@ -486,12 +507,13 @@ def preprocess_training_set(
         dataset_duration=audio_length,
         sample_rate=sr,
     )
-    _current = 70.0
-    while _current < 100.0:
-        _current = min(100.0, _current + 3.0)
-        _set_progress(_current, "写入结果", "预处理文件校验完成")
-        if _current < 100.0:
-            time.sleep(0.1)
+    _simulate_segment(
+        70.0,
+        100.0,
+        "写入结果",
+        lambda: "预处理文件校验完成",
+        hold_seconds=6.0,
+    )
     elapsed_time = time.time() - start_time
     logger.info(
         "Preprocess completed in %.2f seconds on %s seconds of audio.",

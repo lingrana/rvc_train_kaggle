@@ -41,15 +41,6 @@ def _number(value: Any, default: float = 0) -> float:
         return default
 
 
-def _time_based_percent(state: dict[str, Any]) -> float | None:
-    """Estimate training progress from elapsed and remaining time."""
-    elapsed = _number(state.get("elapsed_seconds"), -1)
-    eta = _number(state.get("eta_seconds"), -1)
-    if elapsed < 0 or eta < 0 or elapsed + eta <= 0:
-        return None
-    return max(0.0, min(99.0, elapsed / (elapsed + eta) * 100.0))
-
-
 def read_progress(path: Path) -> dict[str, Any]:
     """Read and normalize progress while accepting the legacy schema."""
     try:
@@ -81,6 +72,9 @@ def read_progress(path: Path) -> dict[str, Any]:
     )
     raw.setdefault("elapsed_seconds", 0)
     raw.setdefault("eta_seconds", 0)
+    raw.setdefault("phase_started_at", 0)
+    raw.setdefault("phase_elapsed_seconds", 0)
+    raw.setdefault("upload_failed", False)
     raw.setdefault("warning", "")
     raw.setdefault("error", "")
     raw.setdefault("recent_log", [])
@@ -122,11 +116,7 @@ def update_progress(model_dir: Path, **changes: Any) -> dict[str, Any]:
         if "elapsed_seconds" not in changes:
             started_at = _number(state.get("started_at", 0))
             state["elapsed_seconds"] = round(max(0.0, now - started_at), 1) if started_at else 0
-        if phase == "training":
-            time_percent = _time_based_percent(state)
-            if time_percent is not None:
-                state["percent"] = round(time_percent, 2)
-        elif phase == "completed":
+        if phase == "completed":
             state["percent"] = 100.0
         phase_started_at = _number(state.get("phase_started_at", 0))
         state["phase_elapsed_seconds"] = (

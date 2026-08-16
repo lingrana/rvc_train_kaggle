@@ -197,7 +197,7 @@ def run(job_id: str) -> None:
                 TRAINING_MODELS_DIR / params["model_name"],
                 phase="uploading",
                 phase_label="步骤4 · 上传阶段",
-                percent=99,
+                percent=100,
                 stage_detail="正在上传模型…",
                 done=False,
             )
@@ -207,10 +207,21 @@ def run(job_id: str) -> None:
                 update_progress(
                     TRAINING_MODELS_DIR / params["model_name"],
                     phase="completed",
-                    phase_label="训练完成",
+                    phase_label="训练完成但上传失败",
                     percent=100,
                     done=True,
+                    upload_failed=True,
                     warning=f"Kaggle 上传失败：{warning}",
+                )
+            else:
+                update_progress(
+                    TRAINING_MODELS_DIR / params["model_name"],
+                    phase="completed",
+                    phase_label="训练完成，可以下载",
+                    percent=100,
+                    done=True,
+                    upload_failed=False,
+                    warning="",
                 )
             result = {"files": result, "upload": upload}
         payload = {"ok": True, "result": result, "finished_at": time.time()}

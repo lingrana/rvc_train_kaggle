@@ -54,21 +54,61 @@ def test_explicit_started_at_resets_elapsed_clocks(tmp_path: Path) -> None:
     assert state["phase_elapsed_seconds"] < 1
 
 
-def test_training_percent_uses_elapsed_and_eta(tmp_path: Path) -> None:
+def test_training_percent_tracks_epochs_not_elapsed(tmp_path: Path) -> None:
     initialize_progress(tmp_path, 100, started_at=time.time() - 30)
     state = update_progress(
         tmp_path,
         phase="training",
+        epoch=5,
+        batch=0,
+        total_batches=10,
         elapsed_seconds=30,
         eta_seconds=70,
-        percent=12,
         done=False,
     )
-    assert state["percent"] == 30
-    assert read_progress(tmp_path / "progress.json")["percent"] == 30
+    assert state["percent"] == 5
+    assert read_progress(tmp_path / "progress.json")["percent"] == 5
+
+    state = update_progress(
+        tmp_path,
+        phase="training",
+        epoch=50,
+        batch=5,
+        total_batches=10,
+        elapsed_seconds=100_000,
+        eta_seconds=0,
+        done=False,
+    )
+    assert state["percent"] == 50.5
 
     state = update_progress(tmp_path, phase="completed", done=True)
     assert state["percent"] == 100
+
+
+def test_preparing_percent_can_reset_to_zero(tmp_path: Path) -> None:
+    update_progress(tmp_path, phase="preprocessing", percent=60, done=False)
+    state = update_progress(
+        tmp_path,
+        phase="preparing",
+        percent=0,
+        reset_percent=True,
+        done=False,
+    )
+    assert state["percent"] == 0
+
+
+def test_upload_failed_flag_is_preserved(tmp_path: Path) -> None:
+    state = update_progress(
+        tmp_path,
+        phase="completed",
+        percent=100,
+        done=True,
+        upload_failed=True,
+        phase_label="训练完成但上传失败",
+    )
+    got = read_progress(tmp_path / "progress.json")
+    assert got["upload_failed"] is True
+    assert got["phase_label"] == "训练完成但上传失败"
 
 
 def test_terminal_helpers_and_legacy_schema(tmp_path: Path) -> None:

@@ -458,7 +458,7 @@ footer a:hover{color:var(--accent)}
 <footer><a href="https://github.com/lingrana/rvc_train_kaggle" target="_blank">© 2026 lingran · 用心打造每一个项目</a></footer>
 
 <script>
-const state={etag:'',timer:null,failures:0,lastJobs:[],uploading:false,datasetConfirmed:false,selectedValues:{},gpus:[],registry:{},progressSnap:{},paths:{},kaggleOwner:''};
+const state={etag:'',timer:null,failures:0,lastJobs:[],uploading:false,datasetConfirmed:false,selectedValues:{},gpus:[],registry:{},progressSnap:{},paths:{},kaggleOwner:'',uploadPct:0,uploadActive:false,uploadDone:false};
 const $=s=>document.querySelector(s);
 const text=(el,v)=>{if(el)el.textContent=v};
 function notice(msg){const el=$('#notice');text(el,msg);el.classList.toggle('show',!!msg)}
@@ -564,7 +564,7 @@ async function submitJob(kind){notice('');try{const key=crypto.randomUUID(),jobP
 async function stopJob(){const active=state.lastJobs.find(j=>['queued','running','stopping'].includes(j.phase));if(!active)return;try{await api('/api/v1/jobs/'+active.id+'/stop',{method:'POST'})}catch(err){notice(err.message)}}
 
 async function digest(blob){const value=await crypto.subtle.digest('SHA-256',await blob.arrayBuffer());return[...new Uint8Array(value)].map(x=>x.toString(16).padStart(2,'0')).join('')}
-async function uploadFile(file,dataset,row){const started=await(await api('/api/v1/uploads/direct',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataset,filename:file.name,size:file.size})})).json(),xhr=new XMLHttpRequest(),lastReported={v:0};return new Promise((resolve,reject)=>{xhr.upload.onprogress=e=>{if(e.lengthComputable){const pct=Math.min(100,Math.round(e.loaded/e.total*100)),mb=(e.loaded/1048576).toFixed(1),totalMb=(e.total/1048576).toFixed(1);row.querySelector('i').style.width=pct+'%';text(row.querySelector('.upload-status'),pct>=100?'完成 ✓':pct+'% ('+mb+' MB / '+totalMb+' MB)');row.querySelector('.upload-status').style.color=pct>=100?'var(--green)':'var(--text-muted)';if(e.loaded-lastReported.v>262144){lastReported.v=e.loaded;fetch('/api/v1/uploads/direct/'+encodeURIComponent(started.id)+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({received:Math.round(e.loaded)})}).catch(()=>{})}}};xhr.onload=()=>{fetch('/api/v1/uploads/direct/'+encodeURIComponent(started.id)+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({received:file.size})}).catch(()=>{});if(xhr.status>=200&&xhr.status<300){text(row.querySelector('.upload-status'),'完成 ✓');row.querySelector('.upload-status').style.color='var(--green)';resolve()}else{try{const d=JSON.parse(xhr.responseText);reject(new Error(d.detail||d.message||'上传失败'))}catch{reject(new Error('上传失败'))}}};xhr.onerror=()=>reject(new Error('网络错误'));xhr.open('PUT','/api/v1/uploads/direct/'+encodeURIComponent(started.id));xhr.setRequestHeader('Content-Type','application/octet-stream');xhr.send(file)})}
+async function uploadFile(file,dataset,row){const started=await(await api('/api/v1/uploads/direct',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataset,filename:file.name,size:file.size})})).json(),xhr=new XMLHttpRequest(),lastReported={v:0};return new Promise((resolve,reject)=>{state.uploadActive=true;state.uploadDone=false;state.uploadPct=0;renderStageCard();xhr.upload.onprogress=e=>{if(e.lengthComputable){const pct=Math.min(100,Math.round(e.loaded/e.total*100)),mb=(e.loaded/1048576).toFixed(1),totalMb=(e.total/1048576).toFixed(1);row.querySelector('i').style.width=pct+'%';text(row.querySelector('.upload-status'),pct>=100?'完成 ✓':pct+'% ('+mb+' MB / '+totalMb+' MB)');row.querySelector('.upload-status').style.color=pct>=100?'var(--green)':'var(--text-muted)';if(pct>state.uploadPct){state.uploadPct=pct;renderStageCard()}if(e.loaded-lastReported.v>262144){lastReported.v=e.loaded;fetch('/api/v1/uploads/direct/'+encodeURIComponent(started.id)+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({received:Math.round(e.loaded)})}).catch(()=>{})}}};xhr.onload=()=>{fetch('/api/v1/uploads/direct/'+encodeURIComponent(started.id)+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({received:file.size})}).catch(()=>{});if(xhr.status>=200&&xhr.status<300){text(row.querySelector('.upload-status'),'完成 ✓');row.querySelector('.upload-status').style.color='var(--green)';state.uploadPct=100;state.uploadActive=false;state.uploadDone=true;renderStageCard();resolve()}else{state.uploadActive=false;renderStageCard();try{const d=JSON.parse(xhr.responseText);reject(new Error(d.detail||d.message||'上传失败'))}catch{reject(new Error('上传失败'))}}};xhr.onerror=()=>{state.uploadActive=false;renderStageCard();reject(new Error('网络错误'))};xhr.open('PUT','/api/v1/uploads/direct/'+encodeURIComponent(started.id));xhr.setRequestHeader('Content-Type','application/octet-stream');xhr.send(file)})}
 
 $('#upload-zone').addEventListener('dragover',e=>{e.preventDefault();$('#upload-zone').classList.add('dragover')});
 $('#upload-zone').addEventListener('dragleave',()=>$('#upload-zone').classList.remove('dragover'));
@@ -581,13 +581,13 @@ renderSideModel(active);renderSideDownloads(completed);renderSideHistory(complet
 ['preprocess-btn','extract-btn','train-btn'].forEach(id=>{$('#'+id).disabled=!!active});$('#stop-btn').style.display=active?'':'none'}
 
 function fmtClock(seconds){try{seconds=Math.max(0,Math.round(Number(seconds)))||0}catch{return '--:--'}if(seconds<1)return '不到1秒';const h=Math.floor(seconds/3600),m=Math.floor(seconds%3600/60),s=seconds%60;return h?h+'小时'+m+'分':(m?m+'分'+s+'秒':s+'秒')}
-function liveElapsed(live,fallback){const e=Number(live&&live.elapsed_seconds);if(e>=0&&Number.isFinite(e))return e;return Math.max(0,Number(fallback)||0)}
+function liveElapsed(live,fallback){const st=Number(live&&live.phase_started_at);if(st>0&&Number.isFinite(st))return Math.max(0,Date.now()/1000-st);return Math.max(0,Number(fallback)||0)}
 function _stageSnap(name){
   const reg=state.registry[name]||{stages:{upload:{done:false},preprocess:{done:false},extract:{done:false},train:{done:false}},last_phase:''};
   const snap={...(state.progressSnap[name]||{})};
   const job=state.lastJobs.find(j=>j.params&&j.params.model_name===name);
   let stages=reg.stages||{};
-  if(job){const live=job.progress||{};snap.phase=live.phase||(job.phase==='queued'?'queued':snap.phase);snap.phase_label=live.phase_label||snap.phase_label||'';snap.percent=live.percent;snap.epoch=live.epoch;snap.total_epochs=live.total_epochs;snap.loss_g=live.loss_g;snap.loss_d=live.loss_d;snap.best_epoch=live.best_epoch;snap.best_loss=live.best_loss;snap.error=live.error||snap.error;snap.elapsed_seconds=live.elapsed_seconds!=null?live.elapsed_seconds:0;snap.eta_seconds=live.eta_seconds;snap.stage_detail=live.stage_detail||snap.stage_detail||'';if(job.stages)stages=job.stages}
+  if(job){const live=job.progress||{};snap.phase=live.phase||(job.phase==='queued'?'queued':snap.phase);snap.phase_label=live.phase_label||snap.phase_label||'';snap.percent=live.percent;snap.epoch=live.epoch;snap.total_epochs=live.total_epochs;snap.loss_g=live.loss_g;snap.loss_d=live.loss_d;snap.best_epoch=live.best_epoch;snap.best_loss=live.best_loss;snap.error=live.error||snap.error;snap.elapsed_seconds=live.elapsed_seconds!=null?live.elapsed_seconds:0;snap.eta_seconds=live.eta_seconds;snap.stage_detail=live.stage_detail||snap.stage_detail||'';snap.phase_started_at=live.phase_started_at;snap.upload_failed=live.upload_failed;if(job.stages)stages=job.stages}
   return {snap,job,stages}
 }
 function _activeStep(snap,job){
@@ -598,11 +598,8 @@ function _activeStep(snap,job){
 function _phaseLabel(snap,job){
   const phase=snap.phase||'';
   const m={uploading_file:'步骤1 · 上传音频',upload_validating:'步骤1 · 校验文件',preparing:'准备阶段',preprocessing:'步骤2 · 数据处理',extracting:'步骤3 · 特征提取',extracting_pitch:'步骤3 · F0提取',extracting_embed:'步骤3 · 特征提取',extracting_verify:'步骤3 · 特征校验',training:'步骤4 · 模型训练',indexing:'步骤4 · 生成索引',validating:'步骤4 · 验证模型',uploading:'步骤4 · 上传模型',completed:'训练完成',stopped:'训练已停止',failed:'训练失败'};
-  if(phase==='preparing'){
-    const preparing={preprocessing:'步骤2 · 数据处理',extracting:'步骤3 · 特征提取',training:'步骤4 · 模型训练'};
-    return preparing[(job&&job.stage)||'']||m.preparing;
-  }
-  return m[phase]||snap.phase_label||phase;
+  if(snap.phase_label)return snap.phase_label;
+  return m[phase]||phase;
 }
 function renderStageCard(){
   const el=$('#side-stage-card');if(!el)return;
@@ -619,15 +616,17 @@ function renderStageCard(){
   const rows=steps.map(([key,stepLabel])=>{
     const st=stages[key]||{};
     let icon,right;
-    if(st.done){icon='✅';let t=st.finished_at?new Date(st.finished_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';const elapsed=st.elapsed_seconds;right=(elapsed!=null?'已用 '+fmtClock(elapsed):'完成')+(t?' · '+t:'')}
+    if(key==='upload'&&state.uploadActive){icon='⏳';right='上传音频 · '+Math.round(state.uploadPct)+'%'}
+    else if(key==='upload'&&state.uploadDone){icon='✅';right='已上传 '+Math.round(state.uploadPct)+'%'}
+    else if(st.done){icon='✅';let t=st.finished_at?new Date(st.finished_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';const elapsed=st.elapsed_seconds;right=(elapsed!=null?'已用 '+fmtClock(elapsed):'完成')+(t?' · '+t:'')}
     else if(failed&&key===failKey){icon='❌';right='未完成 · '+(snap.phase==='failed'?'已失败':'已停止')}
-    else if(active===key){icon='⏳';const elapsed=Number(snap.elapsed_seconds||0);right=labelShort+' · 已用 '+fmtClock(elapsed)}
+    else if(active===key){icon='⏳';const elapsed=liveElapsed(snap,job?(Date.now()/1000-(Number(job.created_at)||Date.now()/1000)):0);const pct=Math.round(Number(snap.percent)||0);let right2=labelShort+(pct>0?' · '+pct+'%':'')+(elapsed>0?' · 已用 '+fmtClock(elapsed):'');const detail=String(snap.stage_detail||'');if(detail)right2+=' · '+detail;right=right2}
     else if(failed){icon='▫️';right='未开始'}
     else{icon='▫️';right='等待开始'}
     return '<div class="side-row"><span>步骤'+stepLabel+'</span><span style="color:var(--text-muted);font-weight:400;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+icon+' '+right+'</span></div>'
   }).join('');
   let extra='';
-  if(snap.phase==='completed')extra='<div class="side-row"><span>状态</span><span style="color:var(--green)">✅ 训练完成</span></div>';
+  if(snap.phase==='completed')extra=snap.upload_failed?'<div class="side-row"><span>状态</span><span style="color:var(--orange)">⚠️ 训练完成但上传失败</span></div>':'<div class="side-row"><span>状态</span><span style="color:var(--green)">✅ 训练完成</span></div>';
   else if(snap.phase==='failed'||snap.phase==='stopped'){const errorShown=String(snap.error||(job&&job.error)||'').replace(/</g,'&lt;').slice(0,400);extra='<div class="side-row"><span>状态</span><span style="color:var(--red)">❌ '+(snap.phase==='failed'?'训练失败':'已停止')+'</span></div>'+(errorShown?'<div style="font-size:11px;color:var(--red);margin-top:6px;word-break:break-all">'+errorShown+'</div>':'')}
   el.innerHTML='<div class="side-info">'+rows+extra+'</div>'
 }
@@ -635,10 +634,7 @@ function _milestonePercent(snap,job){
   const phase=snap.phase||'';
   const raw=Number(snap.percent||0);
   if(phase==='completed')return 100;
-  if(phase==='uploading')return 99;
-  if(phase==='preparing'){const sm={preprocessing:'preprocess',extracting:'extract',training:'train'};const step=sm[(job&&job.stage)||'']||'preprocess';if(step==='train')return 0;return raw}
-  if(phase==='training')return raw;
-  if(phase==='indexing'||phase==='validating')return raw;
+  if(phase==='uploading')return 100;
   return raw
 }
 function renderSideModel(active){
