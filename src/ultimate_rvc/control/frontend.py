@@ -581,15 +581,13 @@ renderSideModel(active);renderSideDownloads(completed);renderSideHistory(complet
 ['preprocess-btn','extract-btn','train-btn'].forEach(id=>{$('#'+id).disabled=!!active});$('#stop-btn').style.display=active?'':'none'}
 
 function fmtClock(seconds){try{seconds=Math.max(0,Math.round(Number(seconds)))||0}catch{return '--:--'}if(seconds<1)return '不到1秒';const h=Math.floor(seconds/3600),m=Math.floor(seconds%3600/60),s=seconds%60;return h?h+'小时'+m+'分':(m?m+'分'+s+'秒':s+'秒')}
-function liveElapsed(live,fallback){const pe=Number(live&&live.phase_elapsed_seconds);if(pe>0)return pe;const ps=Number(live&&live.phase_started_at);if(ps>0)return Date.now()/1000-ps;const e=Number(live&&live.elapsed_seconds);if(e>0)return e;const s=Number(live&&live.started_at);if(s>0)return Date.now()/1000-s;return Math.max(0,Number(fallback)||0)}
-function clickElapsed(job){if(job&&job.created_at)return Date.now()/1000-job.created_at;return 0}
-function stageCardElapsed(live,job,st){if(!st.done)return clickElapsed(job)||liveElapsed(live,0);if(job&&job.created_at&&st.finished_at)return Math.max(0,st.finished_at-job.created_at);if(job&&job.created_at)return Math.max(0,(job.updated_at||Date.now()/1000)-job.created_at);return liveElapsed(live,0)}
+function liveElapsed(live,fallback){const e=Number(live&&live.elapsed_seconds);if(e>=0&&Number.isFinite(e))return e;return Math.max(0,Number(fallback)||0)}
 function _stageSnap(name){
   const reg=state.registry[name]||{stages:{upload:{done:false},preprocess:{done:false},extract:{done:false},train:{done:false}},last_phase:''};
   const snap={...(state.progressSnap[name]||{})};
   const job=state.lastJobs.find(j=>j.params&&j.params.model_name===name);
   let stages=reg.stages||{};
-  if(job){const live=job.progress||{};snap.phase=live.phase||(job.phase==='queued'?'queued':snap.phase);snap.phase_label=live.phase_label||snap.phase_label||'';snap.percent=live.percent;snap.epoch=live.epoch;snap.total_epochs=live.total_epochs;snap.loss_g=live.loss_g;snap.loss_d=live.loss_d;snap.best_epoch=live.best_epoch;snap.best_loss=live.best_loss;snap.error=live.error||snap.error;snap.elapsed_seconds=live.elapsed_seconds!=null?live.elapsed_seconds:clickElapsed(job);snap.eta_seconds=live.eta_seconds;snap.stage_detail=live.stage_detail||snap.stage_detail||'';if(job.stages)stages=job.stages}
+  if(job){const live=job.progress||{};snap.phase=live.phase||(job.phase==='queued'?'queued':snap.phase);snap.phase_label=live.phase_label||snap.phase_label||'';snap.percent=live.percent;snap.epoch=live.epoch;snap.total_epochs=live.total_epochs;snap.loss_g=live.loss_g;snap.loss_d=live.loss_d;snap.best_epoch=live.best_epoch;snap.best_loss=live.best_loss;snap.error=live.error||snap.error;snap.elapsed_seconds=live.elapsed_seconds!=null?live.elapsed_seconds:0;snap.eta_seconds=live.eta_seconds;snap.stage_detail=live.stage_detail||snap.stage_detail||'';if(job.stages)stages=job.stages}
   return {snap,job,stages}
 }
 function _activeStep(snap,job){
@@ -598,9 +596,13 @@ function _activeStep(snap,job){
   return phaseMap[snap.phase||'']||(job?phaseMap[(job.stage)||'']:'')
 }
 function _phaseLabel(snap,job){
-  if(snap.phase_label)return snap.phase_label;
+  const phase=snap.phase||'';
   const m={uploading_file:'步骤1 · 上传音频',upload_validating:'步骤1 · 校验文件',preparing:'准备阶段',preprocessing:'步骤2 · 数据处理',extracting:'步骤3 · 特征提取',extracting_pitch:'步骤3 · F0提取',extracting_embed:'步骤3 · 特征提取',extracting_verify:'步骤3 · 特征校验',training:'步骤4 · 模型训练',indexing:'步骤4 · 生成索引',validating:'步骤4 · 验证模型',uploading:'步骤4 · 上传模型',completed:'训练完成',stopped:'训练已停止',failed:'训练失败'};
-  return m[snap.phase||'']||snap.phase||''
+  if(phase==='preparing'){
+    const preparing={preprocessing:'步骤2 · 数据处理',extracting:'步骤3 · 特征提取',training:'步骤4 · 模型训练'};
+    return preparing[(job&&job.stage)||'']||m.preparing;
+  }
+  return m[phase]||snap.phase_label||phase;
 }
 function renderStageCard(){
   const el=$('#side-stage-card');if(!el)return;
@@ -617,9 +619,9 @@ function renderStageCard(){
   const rows=steps.map(([key,stepLabel])=>{
     const st=stages[key]||{};
     let icon,right;
-    if(st.done){icon='✅';let t=st.finished_at?new Date(st.finished_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';const elapsed=(key==='train'&&job&&job.created_at&&st.finished_at)?Math.max(0,st.finished_at-job.created_at):st.elapsed_seconds;right=(elapsed!=null?'已用 '+fmtClock(elapsed):'完成')+(t?' · '+t:'')}
+    if(st.done){icon='✅';let t=st.finished_at?new Date(st.finished_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';const elapsed=st.elapsed_seconds;right=(elapsed!=null?'已用 '+fmtClock(elapsed):'完成')+(t?' · '+t:'')}
     else if(failed&&key===failKey){icon='❌';right='未完成 · '+(snap.phase==='failed'?'已失败':'已停止')}
-    else if(active===key){icon='⏳';let elapsed=key==='train'?clickElapsed(job):(snap.elapsed_seconds||0);right=labelShort+' · 已用 '+fmtClock(elapsed)}
+    else if(active===key){icon='⏳';const elapsed=Number(snap.elapsed_seconds||0);right=labelShort+' · 已用 '+fmtClock(elapsed)}
     else if(failed){icon='▫️';right='未开始'}
     else{icon='▫️';right='等待开始'}
     return '<div class="side-row"><span>步骤'+stepLabel+'</span><span style="color:var(--text-muted);font-weight:400;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+icon+' '+right+'</span></div>'
@@ -665,7 +667,7 @@ function renderSideModel(active){
 }
 
 function displayPath(root,name){const base=String(root||'').replace(/[\\/]+$/,'');return base+'/'+String(name||'').replace(/^[/\\]+|[/\\]+$/g,'')+'/'}
-function renderSideDownloads(completed){const el=$('#side-downloads');const ready=completed.filter(j=>j.phase==='completed');if(!ready.length){el.innerHTML='<div style="font-size:12px;color:var(--text-muted)">暂无可下载文件</div>';return}const model=ready[0],p=model.params||{},name=p.model_name||'';const files=model.files||{};if(!files.pth||!files.index||!files.log){el.innerHTML='<div style="font-size:12px;color:var(--text-muted)">交付文件生成中…</div>';return}const dataset=p.dataset_name||name,uploadPath=displayPath(state.paths.upload_root,dataset),modelPath=displayPath(state.paths.training_root,name);el.innerHTML='<div style="font-size:11px;color:var(--text-muted);line-height:1.7;margin-bottom:10px"><div><b style="color:var(--text)">上传路径</b><br><span style="word-break:break-all">'+uploadPath+'</span></div><div style="margin-top:6px"><b style="color:var(--text)">生成路径</b><br><span style="word-break:break-all">'+modelPath+'</span></div><div style="margin-top:6px"><b style="color:var(--text)">模型存放路径</b><br><span style="word-break:break-all">'+modelPath+'</span></div></div><a class="dl-all-btn" href="/api/v1/models/'+encodeURIComponent(name)+'/zip" download="'+name+'.zip">📦 下载 '+name+'.zip</a>'}
+function renderSideDownloads(completed){const el=$('#side-downloads');const ready=completed.filter(j=>j.phase==='completed');if(!ready.length){el.innerHTML='<div style="font-size:12px;color:var(--text-muted)">暂无可下载文件</div>';return}const model=ready[0],p=model.params||{},name=p.model_name||'';const files=model.files||{};if(!files.pth||!files.index||!files.log){el.innerHTML='<div style="font-size:12px;color:var(--text-muted)">交付文件生成中…</div>';return}const dataset=p.dataset_name||name,uploadPath=displayPath(state.paths.upload_root,dataset),modelPath=displayPath(state.paths.training_root,name),kaggleUrl=model.kaggle_url||(model.result&&model.result.upload&&model.result.upload.kaggle);const link=kaggleUrl?'<a class="dl-all-btn" href="'+kaggleUrl+'" target="_blank" rel="noopener">🔗 打开 Kaggle Dataset</a>':'<div style="font-size:12px;color:var(--text-muted)">Kaggle Dataset 未上传</div>';el.innerHTML='<div style="font-size:11px;color:var(--text-muted);line-height:1.7;margin-bottom:10px"><div><b style="color:var(--text)">上传路径</b><br><span style="word-break:break-all">'+uploadPath+'</span></div><div style="margin-top:6px"><b style="color:var(--text)">生成路径</b><br><span style="word-break:break-all">'+modelPath+'</span></div><div style="margin-top:6px"><b style="color:var(--text)">模型存放路径</b><br><span style="word-break:break-all">'+modelPath+'</span></div></div>'+link}
 
 function renderSideHistory(completed){const el=$('#side-history');if(!completed.length){el.innerHTML='<div style="font-size:12px;color:var(--text-muted)">暂无历史记录</div>';return}el.innerHTML='<div class="history">'+completed.slice(0,10).map(j=>{const name=j.params?.model_name||'';const icon=j.phase==='completed'?'✅':'❌';return'<div class="history-row"><span class="history-icon">'+icon+'</span><span class="history-name">'+name+'.'+j.type+'</span><span class="history-phase">'+j.phase+'</span></div>'}).join('')+'</div>'}
 

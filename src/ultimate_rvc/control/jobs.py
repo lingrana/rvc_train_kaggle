@@ -128,6 +128,14 @@ def refresh_job(job: dict[str, Any]) -> dict[str, Any]:
                 job["files"] = {kind: path.is_file() for kind, path in files.items()}
             except Exception:
                 pass
+            try:
+                cached_urls = json.loads(
+                    (TRAINING_MODELS_DIR / str(model_name) / "kaggle_urls.json").read_text("utf-8")
+                )
+                if cached_urls.get("kaggle"):
+                    job["kaggle_url"] = str(cached_urls["kaggle"])
+            except (OSError, ValueError, TypeError):
+                pass
     job["alive"] = alive
     return job
 

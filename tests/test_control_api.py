@@ -30,6 +30,11 @@ class ControlFrontendTest(unittest.TestCase):
         self.assertIn('id="side-stage-card"', HTML)
         self.assertIn("function renderStageCard()", HTML)
         self.assertIn("/api/v1/datasets/confirm", HTML)
+        self.assertIn("model.kaggle_url", HTML)
+        self.assertIn("打开 Kaggle Dataset", HTML)
+        self.assertNotIn("'/api/v1/models/'+encodeURIComponent(name)+'/zip'", HTML)
+        self.assertIn("const e=Number(live&&live.elapsed_seconds)", HTML)
+        self.assertIn("return m[phase]||snap.phase_label||phase", HTML)
 
 
 class ControlApiTest(unittest.IsolatedAsyncioTestCase):

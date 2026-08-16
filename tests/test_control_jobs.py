@@ -26,6 +26,33 @@ def test_refresh_collects_worker_result(tmp_path: Path, monkeypatch) -> None:
     assert result["result"] == ["x"]
 
 
+def test_refresh_exposes_cached_kaggle_dataset_url(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(jobs, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(jobs, "TRAINING_MODELS_DIR", tmp_path / "models")
+    model_dir = jobs.TRAINING_MODELS_DIR / "voice"
+    model_dir.mkdir(parents=True)
+    for filename in ("voice.pth", "voice.index", "voice_train.log"):
+        (model_dir / filename).touch()
+    expected = "https://www.kaggle.com/datasets/owner/rvc-voice"
+    (model_dir / "kaggle_urls.json").write_text(
+        json.dumps({"kaggle": expected}), "utf-8"
+    )
+    job_id = str(uuid.uuid4())
+    directory = jobs.JOBS_DIR / job_id
+    directory.mkdir(parents=True)
+    state = {
+        "id": job_id,
+        "phase": "completed",
+        "params": {"model_name": "voice"},
+        "created_at": 1,
+    }
+    (directory / "job.json").write_text(json.dumps(state), "utf-8")
+
+    result = jobs.read_job(job_id)
+
+    assert result["kaggle_url"] == expected
+
+
 def test_invalid_job_id_is_rejected() -> None:
     try:
         jobs.read_job("../outside")
