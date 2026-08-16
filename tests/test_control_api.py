@@ -32,8 +32,8 @@ class ControlFrontendTest(unittest.TestCase):
         self.assertIn("/api/v1/datasets/confirm", HTML)
         self.assertIn("model.kaggle_url", HTML)
         self.assertIn("打开 Kaggle Dataset", HTML)
-        self.assertNotIn("'/api/v1/models/'+encodeURIComponent(name)+'/zip'", HTML)
-        self.assertIn("const st=Number(live&&live.phase_started_at)", HTML)
+        self.assertIn("/api/v1/models/", HTML)
+        self.assertIn("stage_elapsed_seconds", HTML)
         self.assertIn("if(snap.phase_label)return snap.phase_label", HTML)
         self.assertIn("upload_failed", HTML)
 

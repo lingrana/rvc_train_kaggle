@@ -13,22 +13,22 @@ from ultimate_rvc.rvc.train.delivery import atomic_json_dump
 from ultimate_rvc.security import directory_lock
 
 PHASE_LABELS = {
-    "starting": "正在启动任务",
+    "starting": "步骤4 · 准备环境",
     "uploading_file": "步骤1 · 上传音频",
     "upload_validating": "步骤1 · 校验文件",
-    "preparing": "正在准备运行环境",
-    "preprocessing": "步骤2 · 数据处理",
-    "extracting": "步骤3 · 特征提取",
-    "extracting_pitch": "步骤3 · F0提取",
+    "preparing": "步骤2 · 准备环境",
+    "preprocessing": "步骤2 · 扫描文件",
+    "extracting": "步骤3 · 基频提取",
+    "extracting_pitch": "步骤3 · 基频提取",
     "extracting_embed": "步骤3 · 特征提取",
     "extracting_verify": "步骤3 · 特征校验",
-    "training": "步骤4 · 模型训练",
+    "training": "步骤4 · 准备环境",
     "indexing": "步骤4 · 生成索引",
     "validating": "步骤4 · 验证模型",
     "uploading": "步骤4 · 上传模型",
-    "completed": "训练完成，可以下载",
-    "stopped": "训练已停止",
-    "failed": "训练失败",
+    "completed": "步骤4 · 训练完成",
+    "stopped": "步骤4 · 已经停止",
+    "failed": "步骤4 · 执行失败",
 }
 TERMINAL_PHASES = frozenset({"completed", "stopped", "failed"})
 
@@ -39,6 +39,48 @@ def _number(value: Any, default: float = 0) -> float:
         return number if math.isfinite(number) else default
     except (TypeError, ValueError):
         return default
+
+
+def phase_label_for(phase: str, percent: float, done: bool = False) -> str:
+    """Return the four-character label for a phase/percentage milestone."""
+    percent = max(0.0, min(100.0, _number(percent)))
+    if phase in {"uploading_file", "upload_validating"}:
+        if done or percent >= 100:
+            return "步骤1 · 上传完成"
+        return "步骤1 · 校验文件" if percent >= 98 else "步骤1 · 上传音频"
+    if phase in {"preparing", "preprocessing"}:
+        if done or percent >= 100:
+            return "步骤2 · 处理完成"
+        if percent >= 70:
+            return "步骤2 · 写入结果"
+        if percent >= 50:
+            return "步骤2 · 切片处理"
+        if percent >= 30:
+            return "步骤2 · 准备切片"
+        return "步骤2 · 准备环境" if phase == "preparing" else "步骤2 · 扫描文件"
+    if phase in {"extracting", "extracting_pitch", "extracting_embed", "extracting_verify"}:
+        if done or percent >= 100:
+            return "步骤3 · 提取完成"
+        if phase == "extracting_verify" or percent >= 95:
+            return "步骤3 · 特征校验"
+        if phase in {"extracting_embed"} or percent >= 45:
+            return "步骤3 · 特征提取"
+        return "步骤3 · 基频提取"
+    if phase in {"starting", "training", "indexing", "validating", "uploading", "completed"}:
+        if done or phase == "completed" or percent >= 100:
+            return "步骤4 · 训练完成"
+        if phase == "uploading" or percent >= 98:
+            return "步骤4 · 上传模型"
+        if phase == "validating" or percent >= 95:
+            return "步骤4 · 验证模型"
+        if phase == "indexing" or percent >= 90:
+            return "步骤4 · 生成索引"
+        if phase == "training" and percent >= 5:
+            return "步骤4 · 模型训练"
+        if phase == "training" and percent >= 2:
+            return "步骤4 · 加载模型"
+        return "步骤4 · 准备环境"
+    return PHASE_LABELS.get(phase, "")
 
 
 def read_progress(path: Path) -> dict[str, Any]:
@@ -74,6 +116,8 @@ def read_progress(path: Path) -> dict[str, Any]:
     raw.setdefault("eta_seconds", 0)
     raw.setdefault("phase_started_at", 0)
     raw.setdefault("phase_elapsed_seconds", 0)
+    raw.setdefault("stage_started_at", raw.get("started_at", 0))
+    raw.setdefault("stage_elapsed_seconds", raw.get("elapsed_seconds", 0))
     raw.setdefault("upload_failed", False)
     raw.setdefault("warning", "")
     raw.setdefault("error", "")
@@ -103,7 +147,15 @@ def update_progress(model_dir: Path, **changes: Any) -> dict[str, Any]:
         total_batches = int(_number(state.get("total_batches", 0)))
         if "percent" not in changes:
             partial = batch / total_batches if total_batches else 0
-            state["percent"] = min(100.0, ((epoch + partial) / total * 100) if total else 0)
+            raw_percent = ((epoch + partial) / total * 100) if total else 0
+            if phase == "training":
+                state["percent"] = min(90.0, 5.0 + raw_percent * 0.85)
+            elif phase == "indexing":
+                state["percent"] = 90.0
+            elif phase == "validating":
+                state["percent"] = 95.0
+            else:
+                state["percent"] = min(100.0, raw_percent)
         elif (
             not reset_percent
             and phase == previous_phase
@@ -116,6 +168,11 @@ def update_progress(model_dir: Path, **changes: Any) -> dict[str, Any]:
         if "elapsed_seconds" not in changes:
             started_at = _number(state.get("started_at", 0))
             state["elapsed_seconds"] = round(max(0.0, now - started_at), 1) if started_at else 0
+        stage_started_at = _number(state.get("stage_started_at", 0))
+        if not stage_started_at:
+            stage_started_at = now
+            state["stage_started_at"] = stage_started_at
+        state["stage_elapsed_seconds"] = round(max(0.0, now - stage_started_at), 1)
         if phase == "completed":
             state["percent"] = 100.0
         phase_started_at = _number(state.get("phase_started_at", 0))
@@ -124,7 +181,11 @@ def update_progress(model_dir: Path, **changes: Any) -> dict[str, Any]:
         )
         state.update(
             phase=phase,
-            phase_label=str(state.get("phase_label") or PHASE_LABELS[phase]),
+            phase_label=phase_label_for(
+                phase,
+                state.get("percent", 0),
+                bool(state.get("done", False)),
+            ) or str(state.get("phase_label") or PHASE_LABELS[phase]),
             total_epochs=total,
             total=total,
             done=bool(state.get("done", False)) and phase in {"completed", "uploading"},
@@ -143,22 +204,28 @@ def initialize_progress(
     model_dir: Path,
     total_epochs: int,
     started_at: float | None = None,
+    stage_started_at: float | None = None,
+    phase: str = "starting",
 ) -> dict[str, Any]:
+    effective_started_at = started_at or time.time()
+    effective_stage_started_at = stage_started_at or effective_started_at
+    initial_elapsed = max(0.0, time.time() - effective_started_at)
     return update_progress(
         model_dir,
-        phase="starting",
+        phase=phase,
         epoch=0,
         total_epochs=total_epochs,
         batch=0,
         total_batches=0,
         percent=0,
-        elapsed_seconds=0,
+        elapsed_seconds=initial_elapsed,
         eta_seconds=0,
         warning="",
         error="",
         recent_log=[],
         done=False,
-        started_at=started_at or time.time(),
+        started_at=effective_started_at,
+        stage_started_at=effective_stage_started_at,
     )
 
 

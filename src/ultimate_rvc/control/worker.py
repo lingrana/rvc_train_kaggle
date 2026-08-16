@@ -88,10 +88,9 @@ def extract(params: dict[str, Any], started_at: float | None = None) -> None:
 
 
 def train(params: dict[str, Any], started_at: float | None = None) -> Any:
-    from ultimate_rvc.control.registry import mark_stage
     from ultimate_rvc.core.train.train import run_training
 
-    started = time.time()
+    started = started_at or time.time()
     result = run_training(
         params["model_name"], RVCVersion(params.get("version", "v2")),
         bool(params.get("f0_guidance", True)),
@@ -114,7 +113,6 @@ def train(params: dict[str, Any], started_at: float | None = None) -> Any:
         bool(params.get("reduce_memory_usage", False)),
         started_at=started_at,
     )
-    mark_stage(params["model_name"], "train", time.time() - started)
     return result
 
 
@@ -133,60 +131,83 @@ def run(job_id: str) -> None:
     params = job["params"]
     try:
         from ultimate_rvc.common import TRAINING_MODELS_DIR
-        from ultimate_rvc.control.registry import reset_stage
+        from ultimate_rvc.control.registry import mark_stage, reset_stage
         from ultimate_rvc.rvc.train.progress import update_progress
 
         model_dir = TRAINING_MODELS_DIR / str(params.get("model_name", ""))
         model_dir.mkdir(parents=True, exist_ok=True)
-        initial_phase = {
+        job_created_at = float(job.get("created_at") or time.time())
+        prepared_at = time.time()
+        initial_stage = {
+            "preprocess": "preprocessing",
+            "extract": "extracting_pitch",
+            "train": "training",
+            "pipeline": "preprocessing",
+        }.get(job["type"], "preprocessing")
+        initial_job_stage = {
             "preprocess": "preprocessing",
             "extract": "extracting",
             "train": "training",
             "pipeline": "preprocessing",
-        }.get(job["type"], "starting")
-        job_created_at = float(job.get("created_at") or time.time())
-        prepared_at = time.time()
-        prepare_label = {
-            "preprocess": "步骤2 · 准备阶段",
-            "extract": "步骤3 · 准备阶段",
-            "train": "步骤4 · 准备阶段",
-            "pipeline": "步骤2 · 准备阶段",
-        }.get(job["type"], "准备运行环境")
+        }.get(job["type"], "preprocessing")
+        update_job(
+            job_id,
+            stage=initial_job_stage,
+            stage_started_at=prepared_at,
+        )
         update_progress(
             model_dir,
-            phase="preparing",
-            phase_label=prepare_label,
+            phase=initial_stage,
             percent=0,
-            stage_detail="正在准备运行环境…",
+            stage_detail="正在检查运行环境…",
             done=False,
             started_at=job_created_at,
+            stage_started_at=prepared_at,
             phase_started_at=prepared_at,
             reset_percent=True,
         )
         ensure_models()
         if job["type"] == "preprocess":
-            update_job(job_id, stage="preprocessing")
             reset_stage(params["model_name"], "preprocess")
             result = preprocess(params, started_at=prepared_at)
         elif job["type"] == "extract":
-            update_job(job_id, stage="extracting")
             reset_stage(params["model_name"], "extract")
             result = extract(params, started_at=prepared_at)
         elif job["type"] == "train":
-            update_job(job_id, stage="training")
             reset_stage(params["model_name"], "train")
-            result = train(params, started_at=job_created_at)
+            result = train(params, started_at=prepared_at)
         else:
-            update_job(job_id, stage="preprocessing")
             reset_stage(params["model_name"], "preprocess")
             preprocess(params, started_at=prepared_at)
             _stage_at = time.time()
-            update_job(job_id, stage="extracting")
+            update_job(job_id, stage="extracting", stage_started_at=_stage_at)
+            update_progress(
+                model_dir,
+                phase="extracting_pitch",
+                percent=0,
+                stage_detail="正在检查特征提取环境…",
+                stage_started_at=_stage_at,
+                reset_percent=True,
+            )
             reset_stage(params["model_name"], "extract")
             extract(params, started_at=_stage_at)
-            update_job(job_id, stage="training")
+            _train_stage_at = time.time()
+            update_job(job_id, stage="training", stage_started_at=_train_stage_at)
+            update_progress(
+                model_dir,
+                phase="training",
+                percent=0,
+                stage_detail="正在准备训练环境…",
+                stage_started_at=_train_stage_at,
+                reset_percent=True,
+            )
             reset_stage(params["model_name"], "train")
-            result = train(params, started_at=job_created_at)
+            result = train(params, started_at=_train_stage_at)
+        train_stage_started_at = (
+            prepared_at
+            if job["type"] == "train"
+            else locals().get("_train_stage_at", prepared_at)
+        )
         if job["type"] in {"train", "pipeline"} and params.get("upload_kaggle", True):
             update_job(job_id, stage="uploading")
             from ultimate_rvc.control.kaggle_delivery import upload_model
@@ -197,7 +218,7 @@ def run(job_id: str) -> None:
                 TRAINING_MODELS_DIR / params["model_name"],
                 phase="uploading",
                 phase_label="步骤4 · 上传阶段",
-                percent=100,
+                percent=98,
                 stage_detail="正在上传模型…",
                 done=False,
             )
@@ -207,7 +228,6 @@ def run(job_id: str) -> None:
                 update_progress(
                     TRAINING_MODELS_DIR / params["model_name"],
                     phase="completed",
-                    phase_label="训练完成但上传失败",
                     percent=100,
                     done=True,
                     upload_failed=True,
@@ -217,13 +237,27 @@ def run(job_id: str) -> None:
                 update_progress(
                     TRAINING_MODELS_DIR / params["model_name"],
                     phase="completed",
-                    phase_label="训练完成，可以下载",
                     percent=100,
                     done=True,
                     upload_failed=False,
                     warning="",
                 )
             result = {"files": result, "upload": upload}
+        if job["type"] in {"train", "pipeline"}:
+            mark_stage(
+                params["model_name"],
+                "train",
+                time.time() - train_stage_started_at,
+            )
+            if not params.get("upload_kaggle", True):
+                update_progress(
+                    TRAINING_MODELS_DIR / params["model_name"],
+                    phase="completed",
+                    percent=100,
+                    done=True,
+                    upload_failed=False,
+                    warning="",
+                )
         payload = {"ok": True, "result": result, "finished_at": time.time()}
     except BaseException as error:
         payload = {"ok": False, "error": f"{type(error).__name__}: {error}", "finished_at": time.time()}

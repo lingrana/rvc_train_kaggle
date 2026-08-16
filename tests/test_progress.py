@@ -22,7 +22,7 @@ def test_progress_lifecycle(tmp_path: Path) -> None:
     state = update_progress(
         tmp_path, phase="training", epoch=2, batch=5, total_batches=10
     )
-    assert state["percent"] == 25
+    assert state["percent"] == 26.25
     assert state["heartbeat_at"] <= time.time()
 
     for phase in ("indexing", "validating"):
@@ -66,8 +66,8 @@ def test_training_percent_tracks_epochs_not_elapsed(tmp_path: Path) -> None:
         eta_seconds=70,
         done=False,
     )
-    assert state["percent"] == 5
-    assert read_progress(tmp_path / "progress.json")["percent"] == 5
+    assert state["percent"] == 9.25
+    assert read_progress(tmp_path / "progress.json")["percent"] == 9.25
 
     state = update_progress(
         tmp_path,
@@ -79,10 +79,30 @@ def test_training_percent_tracks_epochs_not_elapsed(tmp_path: Path) -> None:
         eta_seconds=0,
         done=False,
     )
-    assert state["percent"] == 50.5
+    assert state["percent"] == 47.925
 
     state = update_progress(tmp_path, phase="completed", done=True)
     assert state["percent"] == 100
+
+
+def test_stage_elapsed_survives_training_milestones(tmp_path: Path) -> None:
+    started = time.time() - 10
+    initialize_progress(
+        tmp_path,
+        10,
+        started_at=started,
+        stage_started_at=started,
+        phase="training",
+    )
+    training = update_progress(tmp_path, phase="training", epoch=1, total_batches=1)
+    indexing = update_progress(tmp_path, phase="indexing")
+    validating = update_progress(tmp_path, phase="validating")
+
+    assert training["phase_label"] == "步骤4 · 模型训练"
+    assert indexing["phase_label"] == "步骤4 · 生成索引"
+    assert validating["phase_label"] == "步骤4 · 验证模型"
+    assert indexing["stage_elapsed_seconds"] >= training["stage_elapsed_seconds"]
+    assert validating["stage_elapsed_seconds"] >= indexing["stage_elapsed_seconds"]
 
 
 def test_preparing_percent_can_reset_to_zero(tmp_path: Path) -> None:
@@ -104,11 +124,11 @@ def test_upload_failed_flag_is_preserved(tmp_path: Path) -> None:
         percent=100,
         done=True,
         upload_failed=True,
-        phase_label="训练完成但上传失败",
+        phase_label="步骤4 · 训练完成",
     )
     got = read_progress(tmp_path / "progress.json")
     assert got["upload_failed"] is True
-    assert got["phase_label"] == "训练完成但上传失败"
+    assert got["phase_label"] == "步骤4 · 训练完成"
 
 
 def test_terminal_helpers_and_legacy_schema(tmp_path: Path) -> None:

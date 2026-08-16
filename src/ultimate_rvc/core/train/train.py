@@ -306,7 +306,13 @@ def run_training(
         update_progress,
     )
 
-    initialize_progress(model_path, num_epochs, started_at=started_at)
+    initialize_progress(
+        model_path,
+        num_epochs,
+        started_at=started_at,
+        stage_started_at=started_at,
+        phase="training",
+    )
 
     resume_root = os.environ.get("RVC_RESUME_ROOT")
     if resume_root and not any(model_path.glob("G_*.pth")):
@@ -339,6 +345,13 @@ def run_training(
     from ultimate_rvc.rvc.train.train import main as train_main  # noqa: PLC0415
 
     try:
+        update_progress(
+            model_path,
+            phase="training",
+            percent=5,
+            stage_detail="训练配置和数据已准备完成",
+            done=False,
+        )
         train_main(
             model_name,
             sample_rate,

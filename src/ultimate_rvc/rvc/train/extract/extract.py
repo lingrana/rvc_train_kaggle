@@ -194,7 +194,7 @@ def run_pitch_extraction(
                     update_progress(
                         Path(model_dir),
                         phase="extracting_pitch",
-                        percent=done_files * 50 / total_files,
+                        percent=done_files * 45 / total_files,
                         stage_detail=f"Pitch 提取 {done_files}/{total_files}",
                         done=False,
                     )
@@ -276,7 +276,7 @@ def run_embedding_extraction(
     _stop_watcher = threading.Event()
     watcher = threading.Thread(
         target=_watch_done,
-        args=(done_path, model_dir, total_files, 50, "Embedding 提取", "extracting_embed", _stop_watcher),
+        args=(done_path, model_dir, total_files, 45, "Embedding 提取", "extracting_embed", _stop_watcher),
         daemon=True,
     )
     watcher.start()
@@ -306,7 +306,7 @@ def run_embedding_extraction(
                     update_progress(
                         Path(model_dir),
                         phase="extracting_embed",
-                        percent=50 + done_files * 50 / total_files,
+                        percent=45 + done_files * 50 / total_files,
                         stage_detail=f"Embedding 提取 {done_files}/{total_files}",
                         done=False,
                     )
