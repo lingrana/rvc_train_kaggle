@@ -112,13 +112,13 @@ def _count_done(done_path: str) -> int:
         return 0
 
 
-def _watch_done(done_path: str, model_dir: str, total: int, base_pct: int, label: str, stop: threading.Event) -> None:
+def _watch_done(done_path: str, model_dir: str, total: int, base_pct: int, label: str, phase: str, stop: threading.Event) -> None:
     while True:
         n = _count_done(done_path)
         if total:
             update_progress(
                 Path(model_dir),
-                phase="extracting",
+                phase=phase,
                 percent=min(99.9, base_pct + n * 50 / total),
                 stage_detail=f"{label} {n}/{total}",
                 done=False,
@@ -167,7 +167,7 @@ def run_pitch_extraction(
     _stop_watcher = threading.Event()
     watcher = threading.Thread(
         target=_watch_done,
-        args=(done_path, model_dir, total_files, 0, "Pitch 提取", _stop_watcher),
+        args=(done_path, model_dir, total_files, 0, "Pitch 提取", "extracting_pitch", _stop_watcher),
         daemon=True,
     )
     watcher.start()
@@ -193,7 +193,7 @@ def run_pitch_extraction(
                     last_report = now_time
                     update_progress(
                         Path(model_dir),
-                        phase="extracting",
+                        phase="extracting_pitch",
                         percent=done_files * 50 / total_files,
                         stage_detail=f"Pitch 提取 {done_files}/{total_files}",
                         done=False,
@@ -276,7 +276,7 @@ def run_embedding_extraction(
     _stop_watcher = threading.Event()
     watcher = threading.Thread(
         target=_watch_done,
-        args=(done_path, model_dir, total_files, 50, "Embedding 提取", _stop_watcher),
+        args=(done_path, model_dir, total_files, 50, "Embedding 提取", "extracting_embed", _stop_watcher),
         daemon=True,
     )
     watcher.start()
@@ -305,7 +305,7 @@ def run_embedding_extraction(
                     last_report = now_time
                     update_progress(
                         Path(model_dir),
-                        phase="extracting",
+                        phase="extracting_embed",
                         percent=50 + done_files * 50 / total_files,
                         stage_detail=f"Embedding 提取 {done_files}/{total_files}",
                         done=False,

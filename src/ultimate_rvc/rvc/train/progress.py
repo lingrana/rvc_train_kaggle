@@ -13,13 +13,19 @@ from ultimate_rvc.rvc.train.delivery import atomic_json_dump
 from ultimate_rvc.security import directory_lock
 
 PHASE_LABELS = {
-    "starting": "正在启动训练",
-    "preprocessing": "正在预处理",
-    "extracting": "正在提取特征",
-    "training": "正在训练",
-    "indexing": "正在生成索引",
-    "validating": "正在验证本地推理兼容性",
-    "uploading": "正在上传 Kaggle Dataset",
+    "starting": "正在启动任务",
+    "uploading_file": "步骤1 · 上传音频",
+    "upload_validating": "步骤1 · 校验文件",
+    "preparing": "正在准备运行环境",
+    "preprocessing": "步骤2 · 数据处理",
+    "extracting": "步骤3 · 特征提取",
+    "extracting_pitch": "步骤3 · F0提取",
+    "extracting_embed": "步骤3 · 特征提取",
+    "extracting_verify": "步骤3 · 特征校验",
+    "training": "步骤4 · 模型训练",
+    "indexing": "步骤4 · 生成索引",
+    "validating": "步骤4 · 验证模型",
+    "uploading": "步骤4 · 上传模型",
     "completed": "训练完成，可以下载",
     "stopped": "训练已停止",
     "failed": "训练失败",
@@ -58,9 +64,10 @@ def read_progress(path: Path) -> dict[str, Any]:
     phase = str(raw.get("phase") or ("completed" if raw.get("done") else "training"))
     if phase not in PHASE_LABELS:
         phase = "training"
+    phase_label = str(raw.get("phase_label") or PHASE_LABELS[phase])
     raw.update(
         phase=phase,
-        phase_label=PHASE_LABELS[phase],
+        phase_label=phase_label,
         epoch=epoch,
         total_epochs=total,
         total=total,
@@ -87,6 +94,7 @@ def update_progress(model_dir: Path, **changes: Any) -> dict[str, Any]:
         state = read_progress(path) if path.is_file() else {}
         now = time.time()
         previous_phase = str(state.get("phase", "starting"))
+        reset_percent = bool(changes.pop("reset_percent", False))
         state.update(changes)
         phase = str(state.get("phase", "starting"))
         if phase not in PHASE_LABELS:
@@ -102,6 +110,15 @@ def update_progress(model_dir: Path, **changes: Any) -> dict[str, Any]:
         if "percent" not in changes:
             partial = batch / total_batches if total_batches else 0
             state["percent"] = min(100.0, ((epoch + partial) / total * 100) if total else 0)
+        elif (
+            not reset_percent
+            and phase == previous_phase
+            and phase in {"preprocessing", "extracting", "extracting_pitch", "extracting_embed", "extracting_verify", "uploading_file"}
+        ):
+            state["percent"] = max(
+                _number(state.get("percent"), 0),
+                _number(changes.get("percent"), 0),
+            )
         if "elapsed_seconds" not in changes:
             started_at = _number(state.get("started_at", 0))
             state["elapsed_seconds"] = round(max(0.0, now - started_at), 1) if started_at else 0
@@ -117,7 +134,7 @@ def update_progress(model_dir: Path, **changes: Any) -> dict[str, Any]:
         )
         state.update(
             phase=phase,
-            phase_label=PHASE_LABELS[phase],
+            phase_label=str(state.get("phase_label") or PHASE_LABELS[phase]),
             total_epochs=total,
             total=total,
             done=bool(state.get("done", False)) and phase in {"completed", "uploading"},

@@ -120,6 +120,14 @@ def refresh_job(job: dict[str, Any]) -> dict[str, Any]:
                 job["stages"] = registry_entry.get("stages")
         except Exception:
             pass
+        if job.get("phase") == "completed":
+            try:
+                from ultimate_rvc.rvc.train.delivery import delivery_files
+
+                files = delivery_files(TRAINING_MODELS_DIR / str(model_name), str(model_name))
+                job["files"] = {kind: path.is_file() for kind, path in files.items()}
+            except Exception:
+                pass
     job["alive"] = alive
     return job
 

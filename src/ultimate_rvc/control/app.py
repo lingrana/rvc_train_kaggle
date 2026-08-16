@@ -499,6 +499,13 @@ async def upload_direct(upload_id: str, request: Request) -> dict[str, Any]:
                 os.replace(temporary, destination)
                 manifest.update(received=received, status="completed", updated_at=time.time())
                 atomic_json_dump(manifest, directory / "manifest.json")
+                try:
+                    from ultimate_rvc.control.registry import mark_stage
+
+                    upload_elapsed = time.time() - float(manifest.get("created_at", time.time()))
+                    mark_stage(manifest["dataset"], "upload", upload_elapsed)
+                except Exception:
+                    pass
                 result = {
                     "dataset": str(dataset_dir),
                     "filename": destination.name,

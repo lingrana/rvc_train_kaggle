@@ -341,162 +341,157 @@ def preprocess_training_set(
     pp = PreProcess(sr, exp_dir)
     logger.info("Starting preprocess with %d processes...", num_processes)
 
-    # --- C+D: 初始化+扫描文件 (50→70) ---
-    # 快速过渡到 50
-    from ultimate_rvc.rvc.train.progress import read_progress as _read_prog
-    _cur = float((_read_prog(Path(exp_dir) / "progress.json") or {}).get("percent", 0))
-    while _cur < 50.0:
-        _cur = min(50.0, _cur + 3.0)
+    progress_path = Path(exp_dir)
+
+    def _set_progress(percent: float, label: str, detail: str) -> None:
         update_progress(
-            Path(exp_dir), phase="preprocessing", percent=_cur,
-            stage_detail="扫描文件…", done=False,
+            progress_path,
+            phase="preprocessing",
+            phase_label=f"步骤2 · {label}",
+            percent=percent,
+            stage_detail=detail,
+            done=False,
         )
-        time.sleep(0.3)
+
+    def _run_slow_phase(start: float, target: float, label: str, detail: str, work):
+        current = start
+        stop = threading.Event()
+
+        def _ticker() -> None:
+            nonlocal current
+            while not stop.wait(2.0):
+                current = min(target - 0.1, current + 0.1)
+                _set_progress(current, label, detail())
+
+        _set_progress(start, label, detail())
+        ticker = threading.Thread(target=_ticker, daemon=True)
+        ticker.start()
+        try:
+            result = work()
+        finally:
+            stop.set()
+            ticker.join(timeout=3)
+        while current < target:
+            current = min(target, current + 3.0)
+            _set_progress(current, label, detail())
+            if current < target:
+                time.sleep(0.1)
+        return result
 
     files = []
     idx = 0
     scanned = 0
-    _scan_pct = 50.0
-    last_scan_report = time.time()
 
-    for root, _, filenames in os.walk(input_root):
-        try:
-            sid = 0 if root == input_root else int(os.path.basename(root))
-            for f in filenames:
-                f_path = os.path.join(root, f)
-                audio_info = pydub_utils.mediainfo(f_path)
-                scanned += 1
-                now_time = time.time()
-                if now_time - last_scan_report >= 2.0:
-                    last_scan_report = now_time
-                    _scan_pct = min(69.0, _scan_pct + 0.1)
-                    update_progress(
-                        Path(exp_dir),
-                        phase="preprocessing",
-                        percent=_scan_pct,
-                        stage_detail=f"扫描文件 {scanned}",
-                        done=False,
-                    )
-                if audio_info["format_name"] in {
-                    AudioExt.WAV,
-                    AudioExt.FLAC,
-                    AudioExt.MP3,
-                    AudioExt.OGG,
-                }:
-                    files.append((f_path, idx, sid))
-                    idx += 1
-                elif (
-                    AudioExt.M4A in audio_info["format_name"]
-                    or audio_info["format_name"] == AudioExt.AAC
-                ):
-                    base_path = os.path.splitext(f_path)[0]
-                    file_hash = get_file_hash(f_path)
-                    wav_path = f"{base_path}_{file_hash}.wav"
-                    if not pathlib.Path(wav_path).exists():
-                        logger.info("[~] Converting audio file: %s to wav format...", f)
-                        _, stderr = (
-                            ffmpeg.input(f_path)
-                            .output(filename=wav_path, f="wav")
-                            .run(
-                                overwrite_output=True,
-                                quiet=True,
+    def _scan_files():
+        nonlocal idx, scanned
+        for root, _, filenames in os.walk(input_root):
+            try:
+                sid = 0 if root == input_root else int(os.path.basename(root))
+                for f in filenames:
+                    f_path = os.path.join(root, f)
+                    audio_info = pydub_utils.mediainfo(f_path)
+                    scanned += 1
+                    if audio_info["format_name"] in {
+                        AudioExt.WAV,
+                        AudioExt.FLAC,
+                        AudioExt.MP3,
+                        AudioExt.OGG,
+                    }:
+                        files.append((f_path, idx, sid))
+                        idx += 1
+                    elif (
+                        AudioExt.M4A in audio_info["format_name"]
+                        or audio_info["format_name"] == AudioExt.AAC
+                    ):
+                        base_path = os.path.splitext(f_path)[0]
+                        file_hash = get_file_hash(f_path)
+                        wav_path = f"{base_path}_{file_hash}.wav"
+                        if not pathlib.Path(wav_path).exists():
+                            logger.info("[~] Converting audio file: %s to wav format...", f)
+                            _, stderr = (
+                                ffmpeg.input(f_path)
+                                .output(filename=wav_path, f="wav")
+                                .run(overwrite_output=True, quiet=True)
                             )
-                        )
-                        logger.info("FFmpeg stderr:\n%s", stderr.decode("utf-8"))
-
+                            logger.info("FFmpeg stderr:\n%s", stderr.decode("utf-8"))
                         files.append((wav_path, idx, sid))
                         idx += 1
-                else:
+                    else:
+                        logger.error(
+                            "File %s is not an audio file with a valid format. Skipping file.",
+                            f,
+                        )
+            except ValueError:
+                logger.error(
+                    "Speaker ID folder is expected to be integer, got '%s' instead. Skipping folder.",
+                    os.path.basename(root),
+                )
 
-                    logger.error(
-                        "File %s is not an audio file with a valid format. Skipping"
-                        " file.",
-                        f,
-                    )
+    _run_slow_phase(0.0, 30.0, "扫描文件", lambda: f"扫描文件 {scanned}", _scan_files)
+    _set_progress(30.0, "准备切片", f"已找到 {len(files)} 个音频文件")
+    _current = 30.0
+    while _current < 50.0:
+        _current = min(50.0, _current + 3.0)
+        _set_progress(_current, "准备切片", f"已找到 {len(files)} 个音频文件")
+        if _current < 50.0:
+            time.sleep(0.1)
 
-        except ValueError:
-            logger.error(  # noqa: TRY400
-                "Speaker ID folder is expected to be integer, got '%s' instead."
-                " Skipping folder.",
-                os.path.basename(root),
-            )
-
-    # --- E: 切片处理 (70→100) ---
+    # --- E: 切片处理 (50→70) ---
     audio_length = []
     total_files = len(files)
     done_files = 0
 
-    # 快速过渡到 70
-    _trans_pct = _scan_pct
-    while _trans_pct < 70.0:
-        _trans_pct = min(70.0, _trans_pct + 3.0)
-        update_progress(
-            Path(exp_dir),
-            phase="preprocessing",
-            percent=_trans_pct,
-            stage_detail=f"切片 0/{total_files}",
-            done=False,
-        )
-        time.sleep(0.3)
-
     remove_sox_libmso6_from_ld_preload()
 
-    _slice_pct = 70.0
-    _slice_stop = threading.Event()
-
-    def _slice_crawl() -> None:
-        nonlocal _slice_pct
-        while not _slice_stop.wait(2.0):
-            _slice_pct = min(99.0, _slice_pct + 0.1)
-            try:
-                update_progress(
-                    Path(exp_dir),
-                    phase="preprocessing",
-                    percent=_slice_pct,
-                    stage_detail=f"切片 {done_files}/{total_files}",
-                    done=False,
+    def _slice_files():
+        nonlocal done_files
+        with (
+            tqdm(total=total_files) as pbar,
+            concurrent.futures.ProcessPoolExecutor(max_workers=num_processes) as executor,
+        ):
+            futures = [
+                executor.submit(
+                    process_audio_wrapper,
+                    (
+                        pp,
+                        file,
+                        cut_preprocess,
+                        process_effects,
+                        noise_reduction,
+                        reduction_strength,
+                        chunk_len,
+                        overlap_len,
+                        normalization_mode,
+                    ),
                 )
-            except Exception:
-                pass
+                for file in files
+            ]
+            for future in concurrent.futures.as_completed(futures):
+                audio_length.append(future.result())
+                pbar.update(1)
+                done_files += 1
 
-    crawler = threading.Thread(target=_slice_crawl, daemon=True)
-    if total_files:
-        crawler.start()
-
-    with (
-        tqdm(total=total_files) as pbar,
-        concurrent.futures.ProcessPoolExecutor(max_workers=num_processes) as executor,
-    ):
-        futures = [
-            executor.submit(
-                process_audio_wrapper,
-                (
-                    pp,
-                    file,
-                    cut_preprocess,
-                    process_effects,
-                    noise_reduction,
-                    reduction_strength,
-                    chunk_len,
-                    overlap_len,
-                    normalization_mode,
-                ),
-            )
-            for file in files
-        ]
-        for future in concurrent.futures.as_completed(futures):
-            audio_length.append(future.result())
-            pbar.update(1)
-            done_files += 1
-
-    _slice_stop.set()
+    _run_slow_phase(
+        50.0,
+        70.0,
+        "切片处理",
+        lambda: f"切片 {done_files}/{total_files}",
+        _slice_files,
+    )
 
     audio_length = sum(audio_length)
+    _set_progress(70.0, "写入结果", "正在写入数据集信息")
     save_dataset_duration_and_sample_rate(
         os.path.join(exp_dir, "model_info.json"),
         dataset_duration=audio_length,
         sample_rate=sr,
     )
+    _current = 70.0
+    while _current < 100.0:
+        _current = min(100.0, _current + 3.0)
+        _set_progress(_current, "写入结果", "预处理文件校验完成")
+        if _current < 100.0:
+            time.sleep(0.1)
     elapsed_time = time.time() - start_time
     logger.info(
         "Preprocess completed in %.2f seconds on %s seconds of audio.",

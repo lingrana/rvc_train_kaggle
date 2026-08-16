@@ -1,7 +1,7 @@
 """Persistent, per-dataset training registry for the RVC control plane.
 
 Each confirmed dataset is recorded here together with the progress of the
-three pipeline stages (preprocess / extract / train). The registry survives
+four pipeline stages (upload / preprocess / extract / train). The registry survives
 browser refreshes and control-service restarts, so the UI can always answer
 "which stage is each dataset at, and how long did each stage take".
 """
@@ -16,8 +16,9 @@ from ultimate_rvc.rvc.train.delivery import atomic_json_dump, validate_model_nam
 from ultimate_rvc.security import directory_lock
 
 REGISTRY_PATH = TRAINING_MODELS_DIR / "registry.json"
-STAGE_KEYS = ("preprocess", "extract", "train")
+STAGE_KEYS = ("upload", "preprocess", "extract", "train")
 STAGE_LABELS = {
+    "upload": "上传音频",
     "preprocess": "数据预处理",
     "extract": "特征提取",
     "train": "模型训练",

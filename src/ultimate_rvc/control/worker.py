@@ -44,7 +44,7 @@ def preprocess(params: dict[str, Any], started_at: float | None = None) -> None:
             bool(params.get("filter_audio", True)), bool(params.get("clean_audio", False)),
             float(params.get("clean_strength", 0.7)),
             AudioSplitMethod(params.get("split_method", "Automatic")),
-            float(params.get("chunk_len", 3.0)), float(params.get("overlap_len", 0.3)),
+            float(params.get("chunk_len", 3.7)), float(params.get("overlap_len", 0.3)),
             int(params.get("preprocess_cores", params.get("cpu_cores", 2))),
         )
     except Exception:
@@ -83,7 +83,7 @@ def extract(params: dict[str, Any], started_at: float | None = None) -> None:
     elapsed = time.time() - started
     mark_stage(params["model_name"], "extract", elapsed)
     update_progress(
-        model_dir, phase="extracting", percent=100, stage_detail="特征提取完成", done=False,
+        model_dir, phase="extracting_embed", percent=100, stage_detail="特征提取完成", done=False,
     )
 
 
@@ -146,14 +146,22 @@ def run(job_id: str) -> None:
         }.get(job["type"], "starting")
         job_created_at = float(job.get("created_at") or time.time())
         prepared_at = time.time()
+        prepare_label = {
+            "preprocess": "步骤2 · 准备阶段",
+            "extract": "步骤3 · 准备阶段",
+            "train": "步骤4 · 准备阶段",
+            "pipeline": "步骤2 · 准备阶段",
+        }.get(job["type"], "准备运行环境")
         update_progress(
             model_dir,
-            phase=initial_phase,
-            percent=0.1,
+            phase="preparing",
+            phase_label=prepare_label,
+            percent=0,
             stage_detail="正在准备运行环境…",
             done=False,
             started_at=job_created_at,
             phase_started_at=prepared_at,
+            reset_percent=True,
         )
         ensure_models()
         if job["type"] == "preprocess":
@@ -185,12 +193,24 @@ def run(job_id: str) -> None:
             from ultimate_rvc.common import TRAINING_MODELS_DIR
             from ultimate_rvc.rvc.train.progress import update_progress
 
+            update_progress(
+                TRAINING_MODELS_DIR / params["model_name"],
+                phase="uploading",
+                phase_label="步骤4 · 上传阶段",
+                percent=99,
+                stage_detail="正在上传模型…",
+                done=False,
+            )
             upload = upload_model(params["model_name"])
             if upload.get("errors"):
                 warning = "；".join(str(item) for item in upload["errors"])
                 update_progress(
                     TRAINING_MODELS_DIR / params["model_name"],
-                    phase="completed", done=True, warning=f"Kaggle 上传失败：{warning}",
+                    phase="completed",
+                    phase_label="训练完成",
+                    percent=100,
+                    done=True,
+                    warning=f"Kaggle 上传失败：{warning}",
                 )
             result = {"files": result, "upload": upload}
         payload = {"ok": True, "result": result, "finished_at": time.time()}
