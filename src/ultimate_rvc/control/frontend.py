@@ -199,7 +199,7 @@ footer a:hover{color:var(--accent)}
 
 <div class="login" id="login"><form class="login-box" id="login-form"><h1>RVC Training Console</h1><input id="user" value="rvc" autocomplete="username" placeholder="用户名"><input id="password" type="password" autocomplete="current-password" placeholder="密码"><button class="btn btn-primary" type="submit">登录</button><p id="login-error"></p></form></div>
 
-<div class="kaggle-setup hidden" id="kaggle-setup"><form class="login-box" id="kaggle-form"><h2 id="kaggle-title">Kaggle Access Token</h2><p class="setup-copy" id="kaggle-copy">输入新版 Kaggle API Token，用于私有模型持久化和跨 Session 续训。Token 仅保留在当前服务进程中。</p><input id="kaggle-token" type="password" autocomplete="off" placeholder="可留空"><input id="resume-dataset" autocomplete="off" placeholder="恢复 Dataset：owner/rvc-model-resume（可留空）"><p class="setup-warning" id="kaggle-warning">不输入仍可训练和浏览器下载，但不能上传私有模型、保存跨 Session checkpoint 或恢复私有 Dataset。</p><div class="btns"><button class="btn btn-ghost" id="skip-kaggle" type="button">暂不配置</button><button class="btn btn-primary" id="kaggle-submit" type="submit">验证并启用</button></div><p id="kaggle-error"></p></form></div>
+<div class="kaggle-setup hidden" id="kaggle-setup"><form class="login-box" id="kaggle-form"><h2 id="kaggle-title">Kaggle Access Token</h2><p class="setup-copy" id="kaggle-copy">输入新版 Kaggle API Token，用于私有模型持久化和跨 Session 续训。Token 仅保留在当前服务进程中。</p><input id="kaggle-token" type="password" autocomplete="off" placeholder="可留空"><p class="setup-warning" id="kaggle-warning">不输入仍可训练和浏览器下载，但不能上传私有模型、保存跨 Session checkpoint 或恢复私有 Dataset。</p><div class="btns"><button class="btn btn-ghost" id="skip-kaggle" type="button">暂不配置</button><button class="btn btn-primary" id="kaggle-submit" type="submit">验证并启用</button></div><p id="kaggle-error"></p></form></div>
 <div class="resume-picker hidden" id="resume-picker"><div class="resume-picker-box"><h2>选择恢复模型</h2><p class="resume-picker-copy">选择一个恢复 Dataset，然后点击确认恢复。</p><div class="resume-list" id="resume-list"><div class="resume-empty">正在读取 Dataset...</div></div><div class="btns"><button class="btn btn-ghost" id="resume-cancel" type="button">取消</button><button class="btn btn-primary" id="resume-confirm" type="button" disabled>确认恢复</button></div><p id="resume-error"></p></div></div>
 
 <nav class="nav">
@@ -463,7 +463,7 @@ footer a:hover{color:var(--accent)}
 <footer><a href="https://github.com/lingrana/rvc_train_kaggle" target="_blank">© 2026 lingran · 用心打造每一个项目</a></footer>
 
 <script>
-const state={etag:'',timer:null,failures:0,lastJobs:[],uploading:false,datasetConfirmed:false,selectedValues:{},gpus:[],registry:{},progressSnap:{},paths:{},kaggleOwner:'',uploadPct:0,uploadActive:false,uploadDone:false};
+const state={etag:'',timer:null,failures:0,lastJobs:[],uploading:false,datasetConfirmed:false,selectedValues:{},gpus:[],registry:{},progressSnap:{},paths:{},kaggleOwner:'',uploadPct:0,uploadActive:false,uploadDone:false,uploadDataset:''};
 const $=s=>document.querySelector(s);
 const text=(el,v)=>{if(el)el.textContent=v};
 function notice(msg){const el=$('#notice');text(el,msg);el.classList.toggle('show',!!msg)}
@@ -569,7 +569,7 @@ async function submitJob(kind){notice('');try{const key=crypto.randomUUID(),jobP
 async function stopJob(){const active=state.lastJobs.find(j=>['queued','running','stopping'].includes(j.phase));if(!active)return;try{await api('/api/v1/jobs/'+active.id+'/stop',{method:'POST'})}catch(err){notice(err.message)}}
 
 async function digest(blob){const value=await crypto.subtle.digest('SHA-256',await blob.arrayBuffer());return[...new Uint8Array(value)].map(x=>x.toString(16).padStart(2,'0')).join('')}
-async function uploadFile(file,dataset,row){const started=await(await api('/api/v1/uploads/direct',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataset,filename:file.name,size:file.size})})).json(),xhr=new XMLHttpRequest(),lastReported={v:0};return new Promise((resolve,reject)=>{state.uploadActive=true;state.uploadDone=false;state.uploadPct=0;renderStageCard();xhr.upload.onprogress=e=>{if(e.lengthComputable){const pct=Math.min(100,Math.round(e.loaded/e.total*100)),mb=(e.loaded/1048576).toFixed(1),totalMb=(e.total/1048576).toFixed(1);row.querySelector('i').style.width=pct+'%';text(row.querySelector('.upload-status'),pct>=100?'完成 ✓':pct+'% ('+mb+' MB / '+totalMb+' MB)');row.querySelector('.upload-status').style.color=pct>=100?'var(--green)':'var(--text-muted)';if(pct>state.uploadPct){state.uploadPct=pct;renderStageCard()}if(e.loaded-lastReported.v>262144){lastReported.v=e.loaded;fetch('/api/v1/uploads/direct/'+encodeURIComponent(started.id)+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({received:Math.round(e.loaded)})}).catch(()=>{})}}};xhr.onload=()=>{fetch('/api/v1/uploads/direct/'+encodeURIComponent(started.id)+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({received:file.size})}).catch(()=>{});if(xhr.status>=200&&xhr.status<300){text(row.querySelector('.upload-status'),'完成 ✓');row.querySelector('.upload-status').style.color='var(--green)';state.uploadPct=100;state.uploadActive=false;state.uploadDone=true;renderStageCard();resolve()}else{state.uploadActive=false;renderStageCard();try{const d=JSON.parse(xhr.responseText);reject(new Error(d.detail||d.message||'上传失败'))}catch{reject(new Error('上传失败'))}}};xhr.onerror=()=>{state.uploadActive=false;renderStageCard();reject(new Error('网络错误'))};xhr.open('PUT','/api/v1/uploads/direct/'+encodeURIComponent(started.id));xhr.setRequestHeader('Content-Type','application/octet-stream');xhr.send(file)})}
+async function uploadFile(file,dataset,row){const started=await(await api('/api/v1/uploads/direct',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataset,filename:file.name,size:file.size})})).json(),xhr=new XMLHttpRequest(),lastReported={v:0};return new Promise((resolve,reject)=>{state.uploadDataset=dataset;state.uploadActive=true;state.uploadDone=false;state.uploadPct=0;renderStageCard();xhr.upload.onprogress=e=>{if(e.lengthComputable){const pct=Math.min(100,Math.round(e.loaded/e.total*100)),mb=(e.loaded/1048576).toFixed(1),totalMb=(e.total/1048576).toFixed(1);row.querySelector('i').style.width=pct+'%';text(row.querySelector('.upload-status'),pct>=100?'完成 ✓':pct+'% ('+mb+' MB / '+totalMb+' MB)');row.querySelector('.upload-status').style.color=pct>=100?'var(--green)':'var(--text-muted)';if(pct>state.uploadPct){state.uploadPct=pct;renderStageCard()}if(e.loaded-lastReported.v>262144){lastReported.v=e.loaded;fetch('/api/v1/uploads/direct/'+encodeURIComponent(started.id)+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({received:Math.round(e.loaded)})}).catch(()=>{})}}};xhr.onload=()=>{fetch('/api/v1/uploads/direct/'+encodeURIComponent(started.id)+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({received:file.size})}).catch(()=>{});if(xhr.status>=200&&xhr.status<300){text(row.querySelector('.upload-status'),'完成 ✓');row.querySelector('.upload-status').style.color='var(--green)';state.uploadPct=100;state.uploadActive=false;state.uploadDone=true;renderStageCard();resolve()}else{state.uploadActive=false;renderStageCard();try{const d=JSON.parse(xhr.responseText);reject(new Error(d.detail||d.message||'上传失败'))}catch{reject(new Error('上传失败'))}}};xhr.onerror=()=>{state.uploadActive=false;renderStageCard();reject(new Error('网络错误'))};xhr.open('PUT','/api/v1/uploads/direct/'+encodeURIComponent(started.id));xhr.setRequestHeader('Content-Type','application/octet-stream');xhr.send(file)})}
 
 $('#upload-zone').addEventListener('dragover',e=>{e.preventDefault();$('#upload-zone').classList.add('dragover')});
 $('#upload-zone').addEventListener('dragleave',()=>$('#upload-zone').classList.remove('dragover'));
@@ -587,88 +587,129 @@ renderSideModel(active);renderSideDownloads(completed);renderSideHistory(complet
 
 function fmtClock(seconds){try{seconds=Math.max(0,Math.round(Number(seconds)))||0}catch{return '--:--'}if(seconds<1)return '不到1秒';const h=Math.floor(seconds/3600),m=Math.floor(seconds%3600/60),s=seconds%60;return h?h+'小时'+m+'分':(m?m+'分'+s+'秒':s+'秒')}
 function liveElapsed(live,fallback){const elapsed=Number(live&&live.stage_elapsed_seconds);if(Number.isFinite(elapsed)&&elapsed>=0)return elapsed;const st=Number(live&&live.stage_started_at);if(st>0&&Number.isFinite(st))return Math.max(0,Date.now()/1000-st);return Math.max(0,Number(fallback)||0)}
-function _stageSnap(name){
-  const reg=state.registry[name]||{stages:{upload:{done:false},preprocess:{done:false},extract:{done:false},train:{done:false}},last_phase:''};
-  const snap={...(state.progressSnap[name]||{})};
-  const job=state.lastJobs.find(j=>j.params&&j.params.model_name===name);
-  let stages=reg.stages||{};
-  if(job){const live=job.progress||{};snap.phase=live.phase||(job.phase==='queued'?'queued':snap.phase);snap.phase_label=live.phase_label||snap.phase_label||'';snap.percent=live.percent;snap.epoch=live.epoch;snap.total_epochs=live.total_epochs;snap.loss_g=live.loss_g;snap.loss_d=live.loss_d;snap.best_epoch=live.best_epoch;snap.best_loss=live.best_loss;snap.error=live.error||snap.error;snap.elapsed_seconds=live.elapsed_seconds!=null?live.elapsed_seconds:0;snap.stage_elapsed_seconds=live.stage_elapsed_seconds!=null?live.stage_elapsed_seconds:null;snap.stage_started_at=live.stage_started_at;snap.eta_seconds=live.eta_seconds;snap.stage_detail=live.stage_detail||snap.stage_detail||'';snap.phase_started_at=live.phase_started_at;snap.upload_failed=live.upload_failed;if(job.stages)stages=job.stages}
-  return {snap,job,stages}
+const PIPELINE_STEPS=[
+  {key:'upload',number:1,label:'数据上传'},
+  {key:'preprocess',number:2,label:'数据处理'},
+  {key:'extract',number:3,label:'特征提取'},
+  {key:'train',number:4,label:'模型训练'}
+];
+const PHASE_VIEW={
+  uploading_file:{step:'upload',label:'步骤1 · 上传音频'},
+  upload_validating:{step:'upload',label:'步骤1 · 校验文件'},
+  upload_completed:{step:'upload',label:'步骤1 · 上传完成'},
+  preparing:{step:'preprocess',label:'步骤2 · 准备环境'},
+  preprocessing:{step:'preprocess',label:'步骤2 · 数据处理'},
+  preprocess_completed:{step:'preprocess',label:'步骤2 · 处理完成'},
+  extract_starting:{step:'extract',label:'步骤3 · 准备环境'},
+  extracting:{step:'extract',label:'步骤3 · 基频提取'},
+  extracting_pitch:{step:'extract',label:'步骤3 · 基频提取'},
+  extracting_embed:{step:'extract',label:'步骤3 · 特征提取'},
+  extracting_verify:{step:'extract',label:'步骤3 · 特征校验'},
+  extract_completed:{step:'extract',label:'步骤3 · 提取完成'},
+  starting:{step:'train',label:'步骤4 · 准备环境'},
+  training:{step:'train',label:'步骤4 · 模型训练'},
+  indexing:{step:'train',label:'步骤4 · 生成索引'},
+  validating:{step:'train',label:'步骤4 · 验证模型'},
+  uploading:{step:'train',label:'步骤4 · 上传模型'},
+  completed:{step:'train',label:'步骤4 · 训练完成'},
+  queued:{step:'',label:'等待任务开始'},
+  stopping:{step:'',label:'正在停止任务'},
+  stopped:{step:'',label:'任务已停止'},
+  failed:{step:'',label:'任务执行失败'}
+};
+const JOB_STEP={preprocess:'preprocess',extract:'extract',train:'train',pipeline:'preprocess'};
+const JOB_STAGE_STEP={preprocessing:'preprocess',extracting:'extract',training:'train',uploading:'train'};
+const JOB_START_PHASE={preprocess:'preparing',extract:'extract_starting',train:'starting',pipeline:'preparing'};
+const JOB_STAGE_PHASE={preprocessing:'preparing',extracting:'extract_starting',training:'starting',uploading:'uploading'};
+
+function emptyStages(){return Object.fromEntries(PIPELINE_STEPS.map(step=>[step.key,{done:false,finished_at:null,elapsed_seconds:null}]))}
+function mergeDefined(...sources){const result={};sources.forEach(source=>Object.entries(source||{}).forEach(([key,value])=>{if(value!==undefined&&value!==null)result[key]=value}));return result}
+function clampPercent(value){const number=Number(value);return Number.isFinite(number)?Math.max(0,Math.min(100,number)):0}
+function modelJob(name){return state.lastJobs.find(job=>job.params&&job.params.model_name===name)||null}
+function jobStep(job){return JOB_STAGE_STEP[String((job||{}).stage||'')]||JOB_STEP[String((job||{}).type||'')]||''}
+function completedPhase(stages){for(const step of [...PIPELINE_STEPS].reverse()){if(stages[step.key]&&stages[step.key].done)return step.key==='train'?'completed':step.key+'_completed'}return ''}
+function currentPhaseLabel(progress,phase){const backend=String(progress.phase_label||'').trim();if(backend&&!['queued','stopping','stopped','failed'].includes(phase))return backend;return (PHASE_VIEW[phase]||{}).label||phase||'等待任务开始'}
+
+function buildStageView(name,preferredJob=null){
+  const registry=state.registry[name]||{};
+  const job=preferredJob||modelJob(name);
+  const saved=state.progressSnap[name]||{};
+  const live=(job&&job.progress)||{};
+  const jobPhase=String((job&&job.phase)||'');
+  const liveUpdated=Number(live.updated_at||0);
+  const jobCreated=Number((job&&job.created_at)||0);
+  const liveIsCurrent=!job||!jobCreated||liveUpdated>=jobCreated;
+  const jobIsActive=['queued','running','stopping'].includes(jobPhase);
+  const progress=jobIsActive&&!liveIsCurrent?{}:mergeDefined(saved,liveIsCurrent?live:{});
+  const stages={...emptyStages(),...(registry.stages||{}),...((job&&job.stages)||{})};
+  let phase=String(progress.phase||'');
+  if(jobPhase==='queued')phase='queued';
+  else if(jobPhase==='stopping')phase='stopping';
+  else if(jobPhase==='stopped'||jobPhase==='failed')phase=jobPhase;
+  else if(jobPhase==='running'&&!liveIsCurrent)phase=JOB_STAGE_PHASE[String(job.stage||'')]||JOB_START_PHASE[String(job.type||'')]||'preparing';
+  if(!phase)phase=completedPhase(stages);
+  let step=(PHASE_VIEW[phase]||{}).step||jobStep(job);
+  if(phase==='preparing'&&jobStep(job))step=jobStep(job);
+  const error=String(progress.error||(job&&job.error)||'');
+  return {name,job,stages,progress,phase,step,label:currentPhaseLabel(progress,phase),percent:phase==='completed'?100:clampPercent(progress.percent),error};
 }
-function _activeStep(snap,job){
-  const phaseMap={uploading_file:'upload',upload_validating:'upload',preprocessing:'preprocess',extracting:'extract',extracting_pitch:'extract',extracting_embed:'extract',extracting_verify:'extract',starting:'train',training:'train',indexing:'train',validating:'train',uploading:'train'};
-  if(snap.phase==='queued'){
-    const queuedMap={preprocess:'preprocess',extract:'extract',train:'train',pipeline:'preprocess'};
-    return queuedMap[String((job||{}).type||'')]||'preprocess';
+
+function stageFailureStep(view){
+  if(!['failed','stopped'].includes(view.phase))return '';
+  return view.step||jobStep(view.job)||((PIPELINE_STEPS.find(step=>!(view.stages[step.key]||{}).done)||{}).key||'');
+}
+function stageRow(step,view){
+  const stored=view.stages[step.key]||{};
+  const selectedUpload=step.key==='upload'&&state.uploadDataset===view.name;
+  if(selectedUpload&&state.uploadActive)return {icon:'⏳',text:'上传音频 · '+Math.round(state.uploadPct)+'%'};
+  if(selectedUpload&&state.uploadDone)return {icon:'✅',text:'已上传 '+Math.round(state.uploadPct)+'%'};
+  if(stored.done){const clock=stored.finished_at?new Date(stored.finished_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';const text=stored.elapsed_seconds!=null?'已用 '+fmtClock(stored.elapsed_seconds):'完成';return {icon:'✅',text:text+(clock?' · '+clock:'')}}
+  const failureStep=stageFailureStep(view);
+  if(failureStep===step.key)return {icon:'❌',text:'未完成 · '+(view.phase==='failed'?'已失败':'已停止')};
+  if(view.step===step.key&&!['failed','stopped'].includes(view.phase)){
+    const fallback=view.job?Date.now()/1000-(Number(view.job.created_at)||Date.now()/1000):0;
+    const elapsed=liveElapsed(view.progress,fallback);
+    const shortLabel=view.label.replace(/^步骤\d\s*·\s*/,'');
+    let text=shortLabel+(view.percent>0?' · '+Math.round(view.percent)+'%':'')+(elapsed>0?' · 已用 '+fmtClock(elapsed):'');
+    if(view.progress.stage_detail)text+=' · '+view.progress.stage_detail;
+    return {icon:'⏳',text};
   }
-  if(snap.phase==='preparing'){const sm={preprocessing:'preprocess',extracting:'extract',training:'train'};return sm[(job&&job.stage)||'']||'preprocess'}
-  return phaseMap[snap.phase||'']||(job?phaseMap[(job.stage)||'']:'')
+  return {icon:'▫️',text:['failed','stopped'].includes(view.phase)?'未开始':'等待开始'};
 }
-function _phaseLabel(snap,job){
-  const phase=snap.phase||'';
-  const m={uploading_file:'步骤1 · 上传音频',upload_validating:'步骤1 · 校验文件',queued:'等待任务开始',preparing:'步骤2 · 准备环境',preprocessing:'步骤2 · 扫描文件',extracting:'步骤3 · 基频提取',extracting_pitch:'步骤3 · 基频提取',extracting_embed:'步骤3 · 特征提取',extracting_verify:'步骤3 · 特征校验',training:'步骤4 · 模型训练',indexing:'步骤4 · 生成索引',validating:'步骤4 · 验证模型',uploading:'步骤4 · 上传模型',completed:'步骤4 · 训练完成',stopped:'步骤4 · 已经停止',failed:'步骤4 · 执行失败'};
-  if(snap.phase_label)return snap.phase_label;
-  return m[phase]||phase;
-}
+
 function renderStageCard(){
   const el=$('#side-stage-card');if(!el)return;
   const name=state.selectedValues['model']||'';
   if(!name){el.innerHTML='<div style="font-size:12px;color:var(--text-muted)">尚未选择模型</div>';return}
-  const {snap,job,stages}=_stageSnap(name);
-  const steps=[['upload','1 数据上传'],['preprocess','2 数据处理'],['extract','3 特征提取'],['train','4 模型训练']];
-  const active=_activeStep(snap,job);
-  const failed=snap.phase==='failed'||snap.phase==='stopped';
-  const jobStage=(function(){const m={preprocessing:'preprocess',extracting:'extract',training:'train'};return m[(job&&job.stage)||'']||''})();
-  const failKey=failed&&(jobStage||(job&&job.type==='preprocess'?'preprocess':job&&job.type==='extract'?'extract':job&&job.type==='train'?'train':'')||((steps.find(([k])=>!(stages[k]&&stages[k].done))||[])[0]||''));
-  const label=_phaseLabel(snap,job);
-  const labelShort=label.replace(/^步骤\d\s*·\s*/,'');
-  const rows=steps.map(([key,stepLabel])=>{
-    const st=stages[key]||{};
-    let icon,right;
-    if(key==='upload'&&state.uploadActive){icon='⏳';right='上传音频 · '+Math.round(state.uploadPct)+'%'}
-    else if(key==='upload'&&state.uploadDone){icon='✅';right='已上传 '+Math.round(state.uploadPct)+'%'}
-    else if(st.done){icon='✅';let t=st.finished_at?new Date(st.finished_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';const elapsed=st.elapsed_seconds;right=(elapsed!=null?'已用 '+fmtClock(elapsed):'完成')+(t?' · '+t:'')}
-    else if(failed&&key===failKey){icon='❌';right='未完成 · '+(snap.phase==='failed'?'已失败':'已停止')}
-    else if(active===key){icon='⏳';const elapsed=liveElapsed(snap,job?(Date.now()/1000-(Number(job.created_at)||Date.now()/1000)):0);const pct=Math.round(Number(snap.percent)||0);let right2=labelShort+(pct>0?' · '+pct+'%':'')+(elapsed>0?' · 已用 '+fmtClock(elapsed):'');const detail=String(snap.stage_detail||'');if(detail)right2+=' · '+detail;right=right2}
-    else if(failed){icon='▫️';right='未开始'}
-    else{icon='▫️';right='等待开始'}
-    return '<div class="side-row"><span>步骤'+stepLabel+'</span><span style="color:var(--text-muted);font-weight:400;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+icon+' '+right+'</span></div>'
+  const view=buildStageView(name);
+  const rows=PIPELINE_STEPS.map(step=>{
+    const row=stageRow(step,view);
+    return '<div class="side-row"><span>步骤'+step.number+' '+step.label+'</span><span style="color:var(--text-muted);font-weight:400;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escapeAttr(row.text)+'">'+row.icon+' '+escapeHtml(row.text)+'</span></div>'
   }).join('');
   let extra='';
-  if(snap.phase==='completed')extra=snap.upload_failed?'<div class="side-row"><span>状态</span><span style="color:var(--orange)">⚠️ 训练完成但上传失败</span></div>':'<div class="side-row"><span>状态</span><span style="color:var(--green)">✅ 训练完成</span></div>';
-  else if(snap.phase==='failed'||snap.phase==='stopped'){const errorShown=String(snap.error||(job&&job.error)||'').replace(/</g,'&lt;').slice(0,400);extra='<div class="side-row"><span>状态</span><span style="color:var(--red)">❌ '+(snap.phase==='failed'?'训练失败':'已停止')+'</span></div>'+(errorShown?'<div style="font-size:11px;color:var(--red);margin-top:6px;word-break:break-all">'+errorShown+'</div>':'')}
+  if(view.phase==='completed')extra=view.progress.upload_failed?'<div class="side-row"><span>状态</span><span style="color:var(--orange)">⚠️ 训练完成但上传失败</span></div>':'<div class="side-row"><span>状态</span><span style="color:var(--green)">✅ 训练完成</span></div>';
+  else if(view.phase==='failed'||view.phase==='stopped'){const errorShown=view.error.slice(0,400);extra='<div class="side-row"><span>状态</span><span style="color:var(--red)">❌ '+(view.phase==='failed'?'任务失败':'已停止')+'</span></div>'+(errorShown?'<div style="font-size:11px;color:var(--red);margin-top:6px;word-break:break-all">'+escapeHtml(errorShown)+'</div>':'')}
   el.innerHTML='<div class="side-info">'+rows+extra+'</div>'
-}
-function _milestonePercent(snap,job){
-  const phase=snap.phase||'';
-  const raw=Number(snap.percent||0);
-  if(phase==='completed')return 100;
-  if(phase==='uploading')return 100;
-  return raw
 }
 function renderSideModel(active){
   const el=$('#side-model-info');
-  if(!active||!active.params){el.innerHTML='<div style="font-size:12px;color:var(--text-muted)">等待训练任务...</div>';return}
-  const p=active.progress||{};
-  const snap={...p};snap.phase=p.phase||active.stage||active.phase;snap.phase_label=p.phase_label||'';
-  const pct=Math.max(0,Math.min(100,_milestonePercent(snap,active)));
-  const stage=snap.phase;
-  const label=_phaseLabel(snap,active);
-  const isTrain=stage==='training'||stage==='indexing'||stage==='validating'||stage==='uploading';
-  let rows=[['当前阶段',label]];
-  rows.push(['当前进度',pct.toFixed(1)+'%']);
-  rows.push(['已用时间',fmt(liveElapsed(p,active.created_at?Date.now()/1000-active.created_at:0))]);
+  const name=String((active&&active.params&&active.params.model_name)||state.selectedValues['model']||'');
+  if(!name){el.innerHTML='<div style="font-size:12px;color:var(--text-muted)">等待训练任务...</div>';return}
+  const view=buildStageView(name,active||null),p=view.progress;
+  const fallback=view.job?Date.now()/1000-(Number(view.job.created_at)||Date.now()/1000):0;
+  const rows=[['当前阶段',view.label],['当前进度',view.percent.toFixed(1)+'%'],['已用时间',fmt(liveElapsed(p,fallback))]];
+  if(p.stage_detail)rows.push(['阶段详情',String(p.stage_detail)]);
   const eta=Number(p.eta_seconds||0);
   if(eta>0)rows.push(['剩余时间',fmt(eta)]);
-  if(isTrain){
+  if(view.step==='train'&&(Number(p.total_epochs)>0||Number(p.epoch)>0)){
     rows.push(['训练轮次',(p.epoch||0)+' / '+(p.total_epochs||0)]);
     if(p.best_epoch!=null)rows.push(['最佳轮次',p.best_epoch]);
     if(p.best_loss!=null)rows.push(['最佳损失',Number(p.best_loss).toFixed(4)]);
     rows.push(['生成器损失','G '+Number(p.loss_g||0).toFixed(4)]);
     rows.push(['判别器损失','D '+Number(p.loss_d||0).toFixed(4)])
   }
-  if(snap.phase==='failed'){const errMsg=String(p.error||active.error||'').replace(/</g,'&lt;').slice(0,400);if(errMsg)rows.push(['错误',errMsg])}
-  el.innerHTML='<div class="side-row" style="margin-bottom:8px"><span>模型名称</span><span style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(active.params.model_name||'')+'">'+(active.params.model_name||'')+'</span></div><div class="progress-bar" style="margin:6px 0 10px"><div class="progress-fill" style="width:'+pct+'%"></div></div>'+rows.map(([a,b])=>'<div class="side-row"><span>'+a+'</span><span>'+b+'</span></div>').join('')
+  if(view.error&&view.phase==='failed')rows.push(['错误',view.error.slice(0,400)]);
+  el.innerHTML='<div class="side-row" style="margin-bottom:8px"><span>模型名称</span><span style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escapeAttr(name)+'">'+escapeHtml(name)+'</span></div><div class="progress-bar" style="margin:6px 0 10px"><div class="progress-fill" style="width:'+view.percent+'%"></div></div>'+rows.map(([label,value])=>'<div class="side-row"><span>'+escapeHtml(label)+'</span><span>'+escapeHtml(value)+'</span></div>').join('')
 }
 
 function displayPath(root,name){const base=String(root||'').replace(/[\\/]+$/,'');return base+'/'+String(name||'').replace(/^[/\\]+|[/\\]+$/g,'')+'/'}
@@ -687,16 +728,16 @@ function selectModel(fieldId,name){state.selectedValues[fieldId]=name;const dd=$
 
 function loadGpus(gpus){state.gpus=gpus;const badge=$('#gpu-info');text(badge,gpus.length?gpus.map(g=>'GPU '+g.id+': '+g.name).join(' · '):'未检测到 GPU');if(gpus.length)badge.title=gpus.map(g=>'GPU '+g.id+': '+g.name+' ('+Math.round(g.memory_mb)+' MB)').join('\n');['training-gpu-options'].forEach(id=>{const dd=$('#'+id);if(!dd)return;dd.innerHTML='';dd.closest('.sel').classList.add('multi');if(!gpus.length){dd.innerHTML='<div class="sel-opt"><span class="ol" style="color:var(--text-muted)">未检测到 GPU</span></div>';return}gpus.forEach(g=>{const opt=document.createElement('div');opt.className='sel-opt selected';opt.dataset.value=String(g.id);opt.onclick=function(){selMulti(this)};opt.innerHTML='<span class="oi">⚡</span><span class="ol">GPU '+g.id+' — '+g.name+'</span><span class="oc" style="font-size:10px;color:var(--text-muted)">'+Math.round(g.memory_mb)+' MB</span>';dd.append(opt)});const btn=dd.closest('.sel').querySelector('.sel-btn');btn.querySelector('.st').textContent=gpus.map(g=>'GPU '+g.id).join(', ');const hidden=dd.closest('.field').querySelector('input[type=hidden]');if(hidden)hidden.value=gpus.map(g=>String(g.id)).join(',')})}
 
-function setResumeControl(d){state.resumeDataset=d.resume_dataset||null;const btn=$('#resume-history');btn.disabled=!d.configured;btn.title=btn.disabled?'请先验证 Kaggle Token':(state.resumeDataset?'下载并启用训练历史':'请先填写恢复 Dataset')}
+function setResumeControl(d){state.resumeDataset=d.resume_dataset||null;const btn=$('#resume-history');btn.disabled=!d.configured;btn.title=btn.disabled?'请先验证 Kaggle Token':'选择可恢复的 Dataset'}
 function setKaggleOwner(owner){state.kaggleOwner=String(owner||'');text($('#kaggle-owner'),state.kaggleOwner?'owner: '+state.kaggleOwner:'')}
-async function openKaggleSettings(){const d=await(await api('/api/v1/kaggle-auth')).json();state.kaggleConfigured=!!d.configured;setKaggleOwner(d.owner);setResumeControl(d);$('#kaggle-token').value='';$('#resume-dataset').value=d.resume_dataset||'';text($('#kaggle-error'),'');if(d.configured){text($('#kaggle-title'),'Kaggle Access Token 已配置');text($('#kaggle-copy'),'当前 owner：'+(d.owner||'已验证')+'。Token 留空可只更新恢复 Dataset。');$('#kaggle-token').placeholder='留空则保持当前 Token';text($('#kaggle-warning'),'恢复 Dataset 使用 owner/rvc-model-resume 格式；留空将关闭跨 Session 恢复。');text($('#skip-kaggle'),'取消');text($('#kaggle-submit'),'保存设置')}else{text($('#kaggle-title'),'Kaggle Access Token');text($('#kaggle-copy'),'输入新版 Kaggle API Token，用于私有模型持久化和跨 Session 续训。Token 仅保留在当前服务进程中。');$('#kaggle-token').placeholder='可留空';text($('#kaggle-warning'),'不输入仍可训练和浏览器下载，但不能上传私有模型、保存跨 Session checkpoint 或恢复私有 Dataset。');text($('#skip-kaggle'),'暂不配置');text($('#kaggle-submit'),'验证并启用')}$('#kaggle-setup').classList.remove('hidden')}
+async function openKaggleSettings(){const d=await(await api('/api/v1/kaggle-auth')).json();state.kaggleConfigured=!!d.configured;setKaggleOwner(d.owner);setResumeControl(d);$('#kaggle-token').value='';text($('#kaggle-error'),'');if(d.configured){text($('#kaggle-title'),'Kaggle Access Token 已配置');text($('#kaggle-copy'),'当前 owner：'+(d.owner||'已验证')+'。输入新 Token 可重新验证，留空则保持当前 Token。');$('#kaggle-token').placeholder='留空则保持当前 Token';text($('#kaggle-warning'),'训练历史请通过顶部“恢复历史”按钮选择。');text($('#skip-kaggle'),'取消');text($('#kaggle-submit'),'保存设置')}else{text($('#kaggle-title'),'Kaggle Access Token');text($('#kaggle-copy'),'输入新版 Kaggle API Token，用于私有模型持久化和跨 Session 续训。Token 仅保留在当前服务进程中。');$('#kaggle-token').placeholder='可留空';text($('#kaggle-warning'),'不输入仍可训练和浏览器下载，但不能上传私有模型、保存跨 Session checkpoint 或恢复私有 Dataset。');text($('#skip-kaggle'),'暂不配置');text($('#kaggle-submit'),'验证并启用')}$('#kaggle-setup').classList.remove('hidden')}
 async function startConsole(){const d=await(await api('/api/v1/kaggle-auth')).json();setKaggleOwner(d.owner);setResumeControl(d);if(d.setup_required){await openKaggleSettings()}else if(d.configured){notice('Kaggle Token 已验证，Dataset owner: '+d.owner)}else if(d.warning||d.setup_required===false){setKaggleOwner('');notice('未配置 Kaggle Token：不能上传私有模型或恢复跨 Session 训练')}poll();loadOptions()}
-async function submitKaggleToken(token){const resumeDataset=$('#resume-dataset').value.trim();const d=await(await api('/api/v1/kaggle-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,resume_dataset:resumeDataset})})).json();$('#kaggle-token').value='';$('#kaggle-setup').classList.add('hidden');text($('#kaggle-error'),'');state.kaggleConfigured=!!d.configured;setKaggleOwner(d.owner);setResumeControl(d);if(d.warning)notice(d.warning);else if(d.configured)notice(d.resume_dataset?'Kaggle 设置已保存；可以点击“恢复历史”。':'Kaggle Token 已启用，Dataset owner: '+d.owner)}
+async function submitKaggleToken(token){const d=await(await api('/api/v1/kaggle-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})})).json();$('#kaggle-token').value='';$('#kaggle-setup').classList.add('hidden');text($('#kaggle-error'),'');state.kaggleConfigured=!!d.configured;setKaggleOwner(d.owner);setResumeControl(d);if(d.warning)notice(d.warning);else if(d.configured)notice('Kaggle Token 已启用，Dataset owner: '+d.owner)}
 $('#login-form').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/v1/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('#user').value,password:$('#password').value})});$('#login').classList.add('hidden');text($('#login-error'),'');await startConsole()}catch(err){text($('#login-error'),err.message)}});
 $('#kaggle-form').addEventListener('submit',async e=>{e.preventDefault();try{await submitKaggleToken($('#kaggle-token').value)}catch(err){text($('#kaggle-error'),err.message)}});
 $('#skip-kaggle').onclick=async()=>{if(state.kaggleConfigured){$('#kaggle-setup').classList.add('hidden');return}try{await submitKaggleToken('')}catch(err){text($('#kaggle-error'),err.message)}};
 $('#kaggle-settings').onclick=()=>openKaggleSettings().catch(err=>notice(err.message));
-async function restoreSelectedDataset(handle){const confirm=$('#resume-confirm');text($('#resume-error'),'');confirm.disabled=true;text(confirm,'正在恢复...');try{const setting=await(await api('/api/v1/kaggle-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:'',resume_dataset:handle})})).json();setResumeControl(setting);const d=await(await api('/api/v1/resume',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataset:handle})})).json();$('#resume-picker').classList.add('hidden');notice('训练历史已准备：'+d.dataset+'。请使用相同模型名开始训练。')}catch(err){text($('#resume-error'),err.message)}finally{text(confirm,'确认恢复');confirm.disabled=!state.resumeSelection}}
+async function restoreSelectedDataset(handle){const confirm=$('#resume-confirm');text($('#resume-error'),'');confirm.disabled=true;text(confirm,'正在恢复...');try{const setting=await(await api('/api/v1/kaggle-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:'',resume_dataset:handle})})).json();setResumeControl(setting);const d=await(await api('/api/v1/resume',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataset:handle})})).json();$('#resume-picker').classList.add('hidden');await loadOptions();const restoredModels=Array.isArray(d.models)?d.models.filter(Boolean):[];if(restoredModels.length)selectModel('model',restoredModels[0]);notice(restoredModels.length?'训练历史已准备，当前模型：'+restoredModels[0]:'训练历史已准备：'+d.dataset)}catch(err){text($('#resume-error'),err.message)}finally{text(confirm,'确认恢复');confirm.disabled=!state.resumeSelection}}
 async function openResumePicker(){if(!state.kaggleConfigured){await openKaggleSettings();text($('#kaggle-error'),'请先验证 Kaggle Token');return}state.resumeSelection='';$('#resume-picker').classList.remove('hidden');const list=$('#resume-list'),confirm=$('#resume-confirm');confirm.disabled=true;text(confirm,'确认恢复');list.innerHTML='<div class="resume-empty">正在读取 Dataset...</div>';text($('#resume-error'),'');try{const d=await(await api('/api/v1/resume/datasets')).json();if(!d.datasets||!d.datasets.length){list.innerHTML='<div class="resume-empty">没有找到以 -resume 结尾的恢复 Dataset</div>';return}list.innerHTML=d.datasets.map(item=>'<button class="resume-item" type="button" data-handle="'+escapeAttr(item.handle)+'"><strong>'+escapeHtml(item.title||item.handle)+'</strong><small>'+escapeHtml(item.handle)+(item.updated?' · 更新于 '+escapeHtml(item.updated):'')+'</small></button>').join('');list.querySelectorAll('.resume-item').forEach(item=>item.onclick=()=>{list.querySelectorAll('.resume-item').forEach(other=>other.classList.remove('selected'));item.classList.add('selected');state.resumeSelection=item.dataset.handle;confirm.disabled=false})}catch(err){list.innerHTML='<div class="resume-empty">读取失败</div>';text($('#resume-error'),err.message)}}
 $('#resume-history').onclick=()=>openResumePicker().catch(err=>notice(err.message));
 $('#resume-confirm').onclick=()=>{if(state.resumeSelection)restoreSelectedDataset(state.resumeSelection)};

@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import json
 import os
 import secrets
 import tempfile
@@ -29,14 +30,18 @@ class ControlFrontendTest(unittest.TestCase):
         self.assertIn("confirmDataset()", HTML)
         self.assertIn('id="side-stage-card"', HTML)
         self.assertIn("function renderStageCard()", HTML)
+        self.assertIn("const PIPELINE_STEPS=", HTML)
+        self.assertIn("const PHASE_VIEW=", HTML)
+        self.assertIn("function buildStageView(", HTML)
+        self.assertIn("function stageRow(", HTML)
         self.assertIn("/api/v1/datasets/confirm", HTML)
         self.assertIn("model.kaggle_url", HTML)
         self.assertIn("打开 Kaggle Dataset", HTML)
         self.assertIn("/api/v1/models/", HTML)
         self.assertIn("stage_elapsed_seconds", HTML)
-        self.assertIn("if(snap.phase_label)return snap.phase_label", HTML)
+        self.assertIn("if(backend&&!['queued','stopping','stopped','failed'].includes(phase))return backend", HTML)
         self.assertIn("upload_failed", HTML)
-        self.assertIn('id="resume-dataset"', HTML)
+        self.assertNotIn('id="resume-dataset"', HTML)
         self.assertIn("btn.disabled=!d.configured", HTML)
         self.assertIn('id="resume-picker"', HTML)
         self.assertIn('id="resume-confirm"', HTML)
@@ -121,7 +126,10 @@ class ControlApiTest(unittest.IsolatedAsyncioTestCase):
         downloads: list[tuple[tuple, dict]] = []
         downloaded_dir = Path(self.temporary.name) / "input" / "resume_download"
         downloaded_dir.mkdir(parents=True)
-        (downloaded_dir / "resume_manifest.json").write_text("{}", encoding="utf-8")
+        (downloaded_dir / "resume_manifest.json").write_text(
+            json.dumps({"model": "RestoredVoice", "epoch": 25, "files": {}}),
+            encoding="utf-8",
+        )
         fake = SimpleNamespace(
             whoami=lambda **kwargs: {"username": "owner"},
             dataset_download=lambda *args, **kwargs: downloads.append((args, kwargs))
@@ -136,13 +144,16 @@ class ControlApiTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(downloads, [])
             self.assertNotIn("RVC_RESUME_ROOT", os.environ)
 
-            restored = await self.client.post(
-                "/api/v1/resume", json={"dataset": "owner/rvc-voice-resume"}
-            )
+            with patch.object(control_app, "register_dataset") as register:
+                restored = await self.client.post(
+                    "/api/v1/resume", json={"dataset": "owner/rvc-voice-resume"}
+                )
 
         self.assertEqual(restored.status_code, 200)
         self.assertEqual(restored.json()["dataset"], "owner/rvc-voice-resume")
         self.assertEqual(restored.json()["status"], "ready")
+        self.assertEqual(restored.json()["models"], ["RestoredVoice"])
+        register.assert_called_once_with("RestoredVoice")
         self.assertEqual(downloads[0][0], ("owner/rvc-voice-resume",))
         self.assertTrue(downloads[0][1]["force_download"])
         expected_root = (control_app.TEMP_DIR / "resume_download").resolve()

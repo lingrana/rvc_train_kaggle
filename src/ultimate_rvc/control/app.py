@@ -235,7 +235,7 @@ async def configure_kaggle_auth(request: Request) -> dict[str, Any]:
 
 
 @app.post("/api/v1/resume")
-async def restore_training_history(request: Request) -> dict[str, str]:
+async def restore_training_history(request: Request) -> dict[str, Any]:
     """Explicitly download a configured checkpoint before a training job starts."""
     if not os.environ.get("KAGGLE_API_TOKEN"):
         raise HTTPException(400, "请先验证 Kaggle API Token")
@@ -258,9 +258,19 @@ async def restore_training_history(request: Request) -> dict[str, str]:
         if staging.exists():
             shutil.rmtree(staging)
         shutil.copytree(downloaded, staging)
-        if not any(staging.rglob("resume_manifest.json")):
+        manifest_paths = sorted(staging.rglob("resume_manifest.json"))
+        if not manifest_paths:
             shutil.rmtree(staging)
             raise ValueError("Dataset 中没有恢复清单")
+        models: list[str] = []
+        for manifest_path in manifest_paths:
+            manifest = json.loads(manifest_path.read_text("utf-8"))
+            model_name = validate_model_name(str(manifest.get("model", "")))
+            if model_name not in models:
+                models.append(model_name)
+        if not models:
+            shutil.rmtree(staging)
+            raise ValueError("Dataset 中没有可恢复模型")
         if output_dir.exists():
             shutil.rmtree(output_dir)
         os.replace(staging, output_dir)
@@ -271,7 +281,14 @@ async def restore_training_history(request: Request) -> dict[str, str]:
         ) from None
     resume_root = str(output_dir.resolve())
     os.environ["RVC_RESUME_ROOT"] = resume_root
-    return {"dataset": handle, "status": "ready", "path": resume_root}
+    for model_name in models:
+        register_dataset(model_name)
+    return {
+        "dataset": handle,
+        "status": "ready",
+        "path": resume_root,
+        "models": models,
+    }
 
 
 @app.get("/api/v1/resume/datasets")
