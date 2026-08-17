@@ -6,6 +6,7 @@ import glob
 import logging
 import os
 import pathlib
+import shutil
 from collections import OrderedDict
 
 import matplotlib.pyplot as plt
@@ -65,6 +66,13 @@ def remove_sox_libmso6_from_ld_preload() -> None:
     environment variable.
 
     """
+    sox_exe = shutil.which("sox")
+    if sox_exe is not None:
+        bundled_libm = os.path.join(os.path.dirname(sox_exe), "libm.so.6")
+        if os.path.isfile(bundled_libm):
+            remove_from_ld_preload(bundled_libm)
+        return
+
     sox_exe = static_sox_run.get_or_fetch_platform_executables_else_raise()
     remove_from_ld_preload(os.path.join(os.path.dirname(sox_exe), "libm.so.6"))
 

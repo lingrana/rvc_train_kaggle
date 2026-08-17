@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from ultimate_rvc.core import main as core_main
 from ultimate_rvc.core.train import train as train_module
 from ultimate_rvc.typing_extra import RVCVersion, TrainingSampleRate
 
@@ -11,6 +12,37 @@ from ultimate_rvc.typing_extra import RVCVersion, TrainingSampleRate
 class FakeTensor:
     def __init__(self, shape: tuple[int, ...]) -> None:
         self.shape = shape
+
+
+def test_initialize_uses_system_sox_without_static_download(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(core_main, "FLAG_FILE", tmp_path / ".initialized")
+    monkeypatch.setattr(core_main, "prequisites_download_pipeline", lambda **_: None)
+    monkeypatch.setattr(core_main.shutil, "which", lambda _: "/usr/bin/sox")
+
+    core_main.initialize()
+
+    assert core_main.FLAG_FILE.is_file()
+
+
+def test_training_checks_system_sox_before_static_download() -> None:
+    source = (
+        Path(__file__).parents[1]
+        / "src"
+        / "ultimate_rvc"
+        / "rvc"
+        / "train"
+        / "utils.py"
+    ).read_text(encoding="utf-8")
+
+    system_lookup = source.index('sox_exe = shutil.which("sox")')
+    static_lookup = source.index(
+        "sox_exe = static_sox_run.get_or_fetch_platform_executables_else_raise()"
+    )
+    assert system_lookup < static_lookup
+    assert "if sox_exe is not None:" in source[system_lookup:static_lookup]
+    assert "return" in source[system_lookup:static_lookup]
 
 
 def test_multi_gpu_training_keeps_batch_size_per_device() -> None:

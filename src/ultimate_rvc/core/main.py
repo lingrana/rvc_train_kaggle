@@ -5,6 +5,7 @@ RVC project.
 
 from __future__ import annotations
 
+import shutil
 from typing import TYPE_CHECKING
 
 import lazy_loader as lazy
@@ -25,9 +26,10 @@ def initialize() -> None:
     """Initialize the Ultimate RVC project."""
     prequisites_download_pipeline(exe=False)
     if not FLAG_FILE.is_file():
-        # NOTE we only add_paths so that sox
-        # binaries are downloaded as part of initialization.
-        static_sox.add_paths(weak=True)
+        # Kaggle already provides SoX. Avoid static-sox's remote binary
+        # download when a working system executable is available.
+        if shutil.which("sox") is None:
+            static_sox.add_paths(weak=True)
         FLAG_FILE.touch()
 
 
