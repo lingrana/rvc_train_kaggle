@@ -144,6 +144,7 @@ def main(
         RuntimeError: If the sample rate of the pretrained model does not match the dataset audio sample rate.
 
     """
+    vocoder = "HiFi-GAN"
     remove_sox_libmso6_from_ld_preload()
     import faulthandler
 
@@ -804,6 +805,18 @@ def _run(
 
     except Exception:
         logger.info("No checkpoint found, training from scratch")
+        if (
+            not pretrain_g
+            or pretrain_g == "None"
+            or not pretrain_d
+            or pretrain_d == "None"
+        ):
+            raise RuntimeError(
+                "未加载预训练底模（G=%r，D=%r）：将从随机权重开始训练，loss 会异常偏高且难以收敛。"
+                "请将预训练模型设为 Default（底模位于 models/rvc/pretraineds/hifigan/）"
+                "或提供匹配的自定义底模后重试。"
+                % (pretrain_g, pretrain_d)
+            )
         epoch_str = 1
         global_step = 0
         if pretrain_g not in {"", "None"}:
