@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import shutil
 import tempfile
@@ -183,7 +184,15 @@ async def configure_kaggle_auth(request: Request) -> dict[str, Any]:
     global _kaggle_setup_complete
     body = await request.json()
     token = str(body.get("token", "")).strip()
-    if not token:
+    has_resume_dataset = "resume_dataset" in body
+    resume_dataset = str(body.get("resume_dataset", "")).strip()
+    if has_resume_dataset and resume_dataset and not re.fullmatch(
+        r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*",
+        resume_dataset,
+    ):
+        raise HTTPException(400, "恢复 Dataset 必须使用 owner/dataset-slug 格式")
+    existing_token = os.environ.get("KAGGLE_API_TOKEN", "")
+    if not token and not existing_token:
         os.environ.pop("KAGGLE_API_TOKEN", None)
         os.environ.pop("RVC_KAGGLE_USERNAME", None)
         os.environ.pop("RVC_RESUME_ROOT", None)
@@ -192,21 +201,30 @@ async def configure_kaggle_auth(request: Request) -> dict[str, Any]:
             "configured": False,
             "warning": "未配置 Token：不能上传私有模型、保存跨 Session checkpoint 或恢复私有 Dataset。",
         }
-    os.environ["KAGGLE_API_TOKEN"] = token
-    try:
-        import kagglehub
+    if token:
+        os.environ["KAGGLE_API_TOKEN"] = token
+        try:
+            import kagglehub
 
-        identity = kagglehub.whoami(verbose=False)
-        owner = str(identity.get("username", "")).strip()
-        if not owner:
-            raise RuntimeError("missing username")
-    except Exception as error:
-        os.environ.pop("KAGGLE_API_TOKEN", None)
-        os.environ.pop("RVC_KAGGLE_USERNAME", None)
-        os.environ.pop("RVC_RESUME_ROOT", None)
-        raise HTTPException(
-            400, f"Kaggle API Token 验证失败 ({type(error).__name__})"
-        ) from None
+            identity = kagglehub.whoami(verbose=False)
+            owner = str(identity.get("username", "")).strip()
+            if not owner:
+                raise RuntimeError("missing username")
+        except Exception as error:
+            os.environ.pop("KAGGLE_API_TOKEN", None)
+            os.environ.pop("RVC_KAGGLE_USERNAME", None)
+            os.environ.pop("RVC_RESUME_ROOT", None)
+            raise HTTPException(
+                400, f"Kaggle API Token 验证失败 ({type(error).__name__})"
+            ) from None
+    else:
+        owner = str(os.environ.get("RVC_KAGGLE_USERNAME", "")).strip()
+    if has_resume_dataset:
+        if resume_dataset:
+            os.environ["RVC_RESUME_DATASET"] = resume_dataset
+        else:
+            os.environ.pop("RVC_RESUME_DATASET", None)
+            os.environ.pop("RVC_RESUME_ROOT", None)
     os.environ["RVC_KAGGLE_USERNAME"] = owner
     _kaggle_setup_complete = True
     return {
@@ -241,6 +259,46 @@ async def restore_training_history(request: Request) -> dict[str, str]:
         ) from None
     os.environ["RVC_RESUME_ROOT"] = str(downloaded)
     return {"dataset": handle, "status": "ready"}
+
+
+@app.get("/api/v1/resume/datasets")
+def list_resume_datasets() -> dict[str, Any]:
+    """List private resume datasets visible to the authenticated Kaggle user."""
+    if not os.environ.get("KAGGLE_API_TOKEN"):
+        raise HTTPException(400, "请先验证 Kaggle API Token")
+    try:
+        from kagglehub.clients import build_kaggle_client
+        from kagglesdk.datasets.types.dataset_api_service import ApiListDatasetsRequest
+        from kagglesdk.datasets.types.dataset_enums import DatasetSelectionGroup
+
+        client = build_kaggle_client()
+        request = ApiListDatasetsRequest()
+        request.group = DatasetSelectionGroup.DATASET_SELECTION_GROUP_MY_PRIVATE
+        request.page_size = 100
+        values: list[dict[str, Any]] = []
+        while True:
+            response = client.datasets.dataset_api_client.list_datasets(request)
+            for dataset in response.datasets or []:
+                handle = str(getattr(dataset, "ref", "") or "").strip()
+                if not handle.lower().endswith("-resume"):
+                    continue
+                values.append(
+                    {
+                        "handle": handle,
+                        "title": str(getattr(dataset, "title", "") or handle),
+                        "description": str(getattr(dataset, "subtitle", "") or ""),
+                        "updated": str(getattr(dataset, "last_updated", "") or ""),
+                        "private": bool(getattr(dataset, "is_private", True)),
+                    }
+                )
+            token = str(getattr(response, "next_page_token", "") or "")
+            if not token:
+                break
+            request.page_token = token
+        values.sort(key=lambda item: item["handle"].casefold())
+        return {"datasets": values}
+    except Exception as error:
+        raise HTTPException(400, f"恢复 Dataset 列表获取失败 ({type(error).__name__})") from None
 
 
 @app.post("/api/v1/datasets/confirm")

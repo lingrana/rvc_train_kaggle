@@ -48,8 +48,9 @@
 `kagglehub==1.0.2` 验证 Token 并自动取得 Dataset owner，Token 只保留在当前
 控制服务进程中，不写入 Secrets 或磁盘。不输入或 Token 失效时仍可训练及从浏览器
 下载，但会禁用私有 Dataset 上传、跨 Session checkpoint 保存和恢复。训练历史不会
-自动恢复：配置 `RVC_RESUME_DATASET` 后，验证 Token，再点击控制台顶部“恢复历史”
-才会下载并启用它。控制台固定
+手动恢复：验证 Token 后，在控制台顶部 **Kaggle** 设置中填写
+`owner/rvc-name-resume` 格式的恢复 Dataset，再点击“恢复历史”下载并启用它。
+也可以预先通过 `RVC_RESUME_DATASET` Secret 提供相同句柄。控制台固定
 绑定本机 `127.0.0.1:7860`，公网入口由自动重启的 Cloudflare Quick Tunnel 提供。
 
 ## 路径与下载

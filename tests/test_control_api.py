@@ -36,6 +36,10 @@ class ControlFrontendTest(unittest.TestCase):
         self.assertIn("stage_elapsed_seconds", HTML)
         self.assertIn("if(snap.phase_label)return snap.phase_label", HTML)
         self.assertIn("upload_failed", HTML)
+        self.assertIn('id="resume-dataset"', HTML)
+        self.assertIn("btn.disabled=!d.configured", HTML)
+        self.assertIn('id="resume-picker"', HTML)
+        self.assertIn("/api/v1/resume/datasets", HTML)
 
 
 class ControlApiTest(unittest.IsolatedAsyncioTestCase):
@@ -132,6 +136,66 @@ class ControlApiTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(downloads[0][0], ("owner/rvc-voice-resume",))
         self.assertTrue(downloads[0][1]["force_download"])
         self.assertIn("RVC_RESUME_ROOT", os.environ)
+
+    async def test_resume_dataset_can_be_configured_after_token_validation(self) -> None:
+        await self._login()
+        fake = SimpleNamespace(whoami=lambda **kwargs: {"username": "owner"})
+        with patch.dict("sys.modules", {"kagglehub": fake}):
+            configured = await self.client.post(
+                "/api/v1/kaggle-auth", json={"token": "secret"}
+            )
+        self.assertEqual(configured.status_code, 200)
+
+        updated = await self.client.post(
+            "/api/v1/kaggle-auth",
+            json={"token": "", "resume_dataset": "owner/rvc-voice-resume"},
+        )
+
+        self.assertEqual(updated.status_code, 200)
+        self.assertTrue(updated.json()["configured"])
+        self.assertEqual(updated.json()["resume_dataset"], "owner/rvc-voice-resume")
+        self.assertEqual(os.environ["KAGGLE_API_TOKEN"], "secret")
+
+        rejected = await self.client.post(
+            "/api/v1/kaggle-auth",
+            json={"token": "", "resume_dataset": "not-a-handle"},
+        )
+        self.assertEqual(rejected.status_code, 400)
+
+    async def test_resume_dataset_list_filters_resume_handles(self) -> None:
+        await self._login()
+        os.environ["KAGGLE_API_TOKEN"] = "secret"
+        os.environ["RVC_KAGGLE_USERNAME"] = "owner"
+
+        class Dataset:
+            def __init__(self, ref: str, title: str):
+                self.ref = ref
+                self.title = title
+                self.subtitle = "checkpoint"
+                self.last_updated = "2026-08-17"
+                self.is_private = True
+
+        class Response:
+            datasets = [
+                Dataset("owner/voice-resume", "Voice"),
+                Dataset("owner/ordinary-model", "Ordinary"),
+            ]
+            next_page_token = ""
+
+        class Api:
+            def list_datasets(self, request):
+                return Response()
+
+        class Client:
+            class Datasets:
+                dataset_api_client = Api()
+            datasets = Datasets()
+
+        with patch("kagglehub.clients.build_kaggle_client", return_value=Client()):
+            response = await self.client.get("/api/v1/resume/datasets")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item["handle"] for item in response.json()["datasets"]], ["owner/voice-resume"])
 
     async def test_dataset_confirm_registers_and_appears_in_options(self) -> None:
         await self._login()
