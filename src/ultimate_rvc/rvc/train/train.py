@@ -156,11 +156,6 @@ def main(
     except FileNotFoundError:
         pass
 
-    # Use a Manager to create a shared list
-    manager = mp.Manager()
-    global_gen_loss = manager.list([0] * total_epoch)
-    global_disc_loss = manager.list([0] * total_epoch)
-
     try:
         with pathlib.Path(config_save_path).open() as f:
             config = json.load(f)
@@ -308,8 +303,6 @@ def main(
                 overtraining_threshold,
                 checkpointing,
                 cache_data_in_gpu,
-                global_gen_loss,
-                global_disc_loss,
                 train_dtype,
                 version,
                 f0_guidance,
@@ -351,8 +344,6 @@ def main(
                             overtraining_threshold,
                             checkpointing,
                             cache_data_in_gpu,
-                            global_gen_loss,
-                            global_disc_loss,
                             train_dtype,
                             version,
                             f0_guidance,
@@ -364,10 +355,24 @@ def main(
                     pid_data["process_pids"].append(subproc.pid)
                 json.dump(pid_data, pid_file, indent=4)
             cancel_signal = signal.SIGTERM if os.name == "nt" else -signal.SIGTERM
+            failed_child = None
+            while any(child.is_alive() for child in children):
+                for child in children:
+                    child.join(timeout=0.5)
+                    if child.exitcode not in {None, 0}:
+                        failed_child = child
+                        break
+                if failed_child is not None:
+                    for child in children:
+                        if child.is_alive():
+                            child.terminate()
+                    break
+            for child in children:
+                child.join()
+
             error_codes = []
-            for i in range(n_gpus):
-                children[i].join()
-                exit_code = children[i].exitcode
+            for i, child in enumerate(children):
+                exit_code = child.exitcode
                 if exit_code != 0:
                     logger.warning(
                         "Process running on device %s exited with code %s.",
@@ -419,8 +424,6 @@ def main(
                         overtraining_threshold,
                         checkpointing,
                         cache_data_in_gpu,
-                        global_gen_loss,
-                        global_disc_loss,
                         train_dtype,
                         version,
                         f0_guidance,
@@ -455,8 +458,6 @@ def main(
                 overtraining_threshold,
                 checkpointing,
                 cache_data_in_gpu,
-                global_gen_loss,
-                global_disc_loss,
                 train_dtype,
                 version,
                 f0_guidance,
@@ -519,8 +520,6 @@ def _run(
     overtraining_threshold,
     checkpointing,
     cache_data_in_gpu,
-    global_gen_loss,
-    global_disc_loss,
     train_dtype,
     version="v2",
     f0_guidance=True,
@@ -562,25 +561,36 @@ def _run(
     else:
         writer_eval = None
 
-    # Initialize distributed training environment for child node.
-    # Aligned with the reference multi-GPU setup: always gloo (nccl can
-    # segfault on shared/cloud GPU boxes) with libuv explicitly disabled.
-    if use_ddp:
-        try:
-            dist.init_process_group(
-                backend="gloo",
-                init_method="env://?use_libuv=False",
-                world_size=n_gpus,
-                rank=rank,
-            )
-        except Exception as init_error:
-            logger.warning("DDP init failed (rank %d): %s. Running without DDP.", rank, init_error)
-            use_ddp = False
-
-    torch.manual_seed(config.train.seed)
-
     if device.type == "cuda":
         torch.cuda.set_device(device_id)
+
+    # Initialize distributed training. NCCL is substantially faster for
+    # CUDA on Linux; gloo remains the portable fallback for Windows/CPU.
+    if use_ddp:
+        requested_backend = os.environ.get("RVC_DDP_BACKEND", "").strip().lower()
+        backend = requested_backend or (
+            "nccl" if device.type == "cuda" and sys.platform != "win32" else "gloo"
+        )
+        if backend not in {"nccl", "gloo"}:
+            raise ValueError(f"Unsupported RVC_DDP_BACKEND: {backend}")
+        os.environ.setdefault("TORCH_DISTRIBUTED_USE_LIBUV", "0")
+        if backend == "nccl":
+            os.environ.setdefault("NCCL_ASYNC_ERROR_HANDLING", "1")
+        try:
+            dist.init_process_group(
+                backend=backend,
+                init_method="env://",
+                world_size=n_gpus,
+                rank=rank,
+                timeout=datetime.timedelta(seconds=120),
+            )
+            logger.info("DDP initialized with %s (rank %d/%d)", backend, rank, n_gpus)
+        except Exception as init_error:
+            raise RuntimeError(
+                f"DDP initialization failed on rank {rank} with {backend}"
+            ) from init_error
+
+    torch.manual_seed(config.train.seed)
 
     # Create datasets and dataloaders
     from ultimate_rvc.rvc.train.data_utils import (
@@ -593,7 +603,7 @@ def _run(
     collate_fn = TextAudioCollateMultiNSFsid()
     train_sampler = DistributedBucketSampler(
         train_dataset,
-        batch_size * n_gpus,
+        batch_size,
         [50, 100, 200, 300, 400, 500, 600, 700, 800, 900],
         num_replicas=n_gpus,
         rank=rank,
@@ -753,6 +763,8 @@ def _run(
     # Load checkpoint if available
     scaler_dict = {}
     try:
+        latest_g_checkpoint = latest_checkpoint_path(experiment_dir, "G_*.pth")
+        checkpoint_metadata = load_torch_checkpoint(latest_g_checkpoint)
         _, _, _, epoch_str, lowest_d_value, consecutive_increases_disc, scaler_dict = (
             load_checkpoint(
                 latest_checkpoint_path(experiment_dir, "D_*.pth"),
@@ -762,11 +774,17 @@ def _run(
         )
         _, _, _, epoch_str, lowest_g_value, consecutive_increases_gen, _ = (
             load_checkpoint(
-                latest_checkpoint_path(experiment_dir, "G_*.pth"),
+                latest_g_checkpoint,
                 net_g,
                 optim_g,
             )
         )
+        if checkpoint_metadata.get("loss_metric") != "mean_per_optimizer_step_v1":
+            logger.info("Legacy loss metric detected; resetting best-loss tracking")
+            lowest_g_value = {"value": float("inf"), "epoch": 0}
+            lowest_d_value = {"value": float("inf"), "epoch": 0}
+            consecutive_increases_gen = 0
+            consecutive_increases_disc = 0
         epoch_str += 1
         global_step = (epoch_str - 1) * len(train_loader)
         logger.info("Resumed from epoch %s", epoch_str)
@@ -903,15 +921,29 @@ def _run(
             sid.to(device),
         )
     if epoch_str > custom_total_epoch:
-        cleanup_training_processes(experiment_dir)
+        if rank == 0:
+            cleanup_training_processes(experiment_dir)
+        elif dist.is_initialized():
+            dist.destroy_process_group()
         return
     logger.info("Starting training...")
     for epoch in range(epoch_str, custom_total_epoch + 1):
-        if _stop_requested:
+        stop_requested = _stop_requested
+        if dist.is_initialized():
+            stop_tensor = torch.tensor(
+                [int(stop_requested)],
+                device=device if dist.get_backend() == "nccl" else "cpu",
+            )
+            dist.all_reduce(stop_tensor, op=dist.ReduceOp.MAX)
+            stop_requested = bool(stop_tensor.item())
+        if stop_requested:
             print("[RVC] 训练已停止")
-            _safe_cleanup(experiment_dir)
+            if rank == 0:
+                _safe_cleanup(experiment_dir)
+            elif dist.is_initialized():
+                dist.destroy_process_group()
             return
-        train_and_evaluate(
+        done = train_and_evaluate(
             rank,
             epoch,
             config,
@@ -936,13 +968,17 @@ def _run(
             overtraining_detector,
             overtraining_threshold,
             cache_data_in_gpu,
-            global_gen_loss,
-            global_disc_loss,
             scaler,
             train_dtype,
             f0_guidance,
             version,
         )
+        if done:
+            if rank == 0:
+                _safe_cleanup(experiment_dir)
+            elif dist.is_initialized():
+                dist.destroy_process_group()
+            return
 
 
 def train_and_evaluate(
@@ -970,19 +1006,21 @@ def train_and_evaluate(
     overtraining_detector,
     overtraining_threshold,
     cache_data_in_gpu,
-    global_gen_loss,
-    global_disc_loss,
     scaler,
     train_dtype,
     f0_guidance=True,
     version="v2",
-) -> None:
+) -> bool:
     """Train and evaluates the model for one epoch."""
     global global_step, lowest_g_value, lowest_d_value, consecutive_increases_gen, consecutive_increases_disc, _last_progress_write
 
     model_add = []
     checkpoint_idxs = []
     done = False
+    epoch_gen_loss = 0.0
+    epoch_disc_loss = 0.0
+    epoch_gen_steps = 0
+    epoch_disc_steps = 0
 
     net_g, net_d = nets
     optim_g, optim_d = optims
@@ -1066,7 +1104,8 @@ def train_and_evaluate(
                     y_d_hat_r, y_d_hat_g, _, _ = net_d(wave, y_hat.detach())
                 loss_disc, _, _ = discriminator_loss(y_d_hat_r, y_d_hat_g)
                 # Discriminator backward and update
-                global_disc_loss[epoch - 1] += loss_disc.item()
+                epoch_disc_loss += loss_disc.item()
+                epoch_disc_steps += 1
                 optim_d.zero_grad()
                 if device.type == "cuda" and train_dtype == torch.float16:
                     scaler.scale(loss_disc).backward()
@@ -1112,7 +1151,8 @@ def train_and_evaluate(
             loss_fm = feature_loss(fmap_r, fmap_g)
             loss_gen, _ = generator_loss(y_d_hat_g)
             loss_gen_all = loss_gen + loss_fm + loss_mel + loss_kl
-            global_gen_loss[epoch - 1] += loss_gen_all.item()
+            epoch_gen_loss += loss_gen_all.item()
+            epoch_gen_steps += 1
             optim_g.zero_grad()
             if device.type == "cuda" and train_dtype == torch.float16:
                 scaler.scale(loss_gen_all).backward()
@@ -1195,11 +1235,22 @@ def train_and_evaluate(
 
     with torch.no_grad():
         torch.cuda.empty_cache()
+    loss_totals = torch.tensor(
+        [epoch_gen_loss, epoch_disc_loss, epoch_gen_steps, epoch_disc_steps],
+        dtype=torch.float64,
+        device=device if dist.is_initialized() and dist.get_backend() == "nccl" else "cpu",
+    )
+    if dist.is_initialized():
+        dist.all_reduce(loss_totals, op=dist.ReduceOp.SUM)
+    total_gen_loss, total_disc_loss, total_gen_steps, total_disc_steps = (
+        loss_totals.tolist()
+    )
+    if total_gen_steps <= 0 or total_disc_steps <= 0:
+        raise RuntimeError("Training epoch completed without optimizer steps")
+    avg_global_gen_loss = total_gen_loss / total_gen_steps
+    avg_global_disc_loss = total_disc_loss / total_disc_steps
     # Logging and checkpointing
     if rank == 0:
-        avg_global_disc_loss = global_disc_loss[epoch - 1] / len(train_loader.dataset)
-        avg_global_gen_loss = global_gen_loss[epoch - 1] / len(train_loader.dataset)
-
         min_delta = 0.001
 
         if avg_global_disc_loss < lowest_d_value["value"] - min_delta:
@@ -1405,6 +1456,14 @@ def train_and_evaluate(
                 consecutive_increases_gen,
                 os.path.join(experiment_dir, f"G_{idx}.pth"),
                 scaler,
+                {
+                    "model_kind": "generator",
+                    "version": version,
+                    "f0": int(f0_guidance),
+                    "sample_rate": int(sample_rate),
+                    "vocoder": vocoder,
+                    "loss_metric": "mean_per_optimizer_step_v1",
+                },
             )
             save_checkpoint(
                 net_d,
@@ -1415,6 +1474,14 @@ def train_and_evaluate(
                 consecutive_increases_disc,
                 os.path.join(experiment_dir, f"D_{idx}.pth"),
                 scaler,
+                {
+                    "model_kind": "discriminator",
+                    "version": version,
+                    "f0": int(f0_guidance),
+                    "sample_rate": int(sample_rate),
+                    "vocoder": vocoder,
+                    "loss_metric": "mean_per_optimizer_step_v1",
+                },
             )
         if checkpoint_idxs:
             try:
@@ -1464,9 +1531,14 @@ def train_and_evaluate(
             )
         with torch.no_grad():
             torch.cuda.empty_cache()
-        if done:
-            _safe_cleanup(experiment_dir)
-            return
+    if dist.is_initialized():
+        done_tensor = torch.tensor(
+            [int(done)],
+            device=device if dist.get_backend() == "nccl" else "cpu",
+        )
+        dist.broadcast(done_tensor, src=0)
+        done = bool(done_tensor.item())
+    return done
 
 
 def _safe_cleanup(experiment_dir) -> None:

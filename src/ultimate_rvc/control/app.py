@@ -247,18 +247,31 @@ async def restore_training_history(request: Request) -> dict[str, str]:
         import kagglehub
 
         output_dir = TEMP_DIR / "resume_download"
-        downloaded = kagglehub.dataset_download(
+        downloaded = Path(kagglehub.dataset_download(
             handle,
             output_dir=str(output_dir),
             force_download=True,
-        )
+        )).resolve()
+        if not downloaded.is_dir():
+            raise FileNotFoundError("下载目录不存在")
+        staging = TEMP_DIR / ".resume_download.tmp"
+        if staging.exists():
+            shutil.rmtree(staging)
+        shutil.copytree(downloaded, staging)
+        if not any(staging.rglob("resume_manifest.json")):
+            shutil.rmtree(staging)
+            raise ValueError("Dataset 中没有恢复清单")
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+        os.replace(staging, output_dir)
     except Exception as error:
         os.environ.pop("RVC_RESUME_ROOT", None)
         raise HTTPException(
             400, f"训练历史下载失败 ({type(error).__name__})"
         ) from None
-    os.environ["RVC_RESUME_ROOT"] = str(downloaded)
-    return {"dataset": handle, "status": "ready"}
+    resume_root = str(output_dir.resolve())
+    os.environ["RVC_RESUME_ROOT"] = resume_root
+    return {"dataset": handle, "status": "ready", "path": resume_root}
 
 
 @app.get("/api/v1/resume/datasets")

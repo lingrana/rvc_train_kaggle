@@ -39,7 +39,10 @@ class ControlFrontendTest(unittest.TestCase):
         self.assertIn('id="resume-dataset"', HTML)
         self.assertIn("btn.disabled=!d.configured", HTML)
         self.assertIn('id="resume-picker"', HTML)
+        self.assertIn('id="resume-confirm"', HTML)
         self.assertIn("/api/v1/resume/datasets", HTML)
+        self.assertIn("$('#resume-confirm').onclick", HTML)
+        self.assertNotIn("item.onclick=()=>restoreSelectedDataset", HTML)
 
 
 class ControlApiTest(unittest.IsolatedAsyncioTestCase):
@@ -48,8 +51,10 @@ class ControlApiTest(unittest.IsolatedAsyncioTestCase):
         root = Path(self.temporary.name)
         self.original_audio = control_app.TRAINING_AUDIO_DIR
         self.original_uploads = control_app.UPLOADS_DIR
+        self.original_temp = control_app.TEMP_DIR
         control_app.TRAINING_AUDIO_DIR = root / "audio"
         control_app.UPLOADS_DIR = root / "uploads"
+        control_app.TEMP_DIR = root / "temp"
         os.environ.update(
             RVC_CONTROL_USER=_TEST_USER,
             RVC_CONTROL_PASSWORD=_TEST_PASSWORD,
@@ -65,6 +70,7 @@ class ControlApiTest(unittest.IsolatedAsyncioTestCase):
         await self.client.aclose()
         control_app.TRAINING_AUDIO_DIR = self.original_audio
         control_app.UPLOADS_DIR = self.original_uploads
+        control_app.TEMP_DIR = self.original_temp
         os.environ.pop("KAGGLE_API_TOKEN", None)
         os.environ.pop("RVC_KAGGLE_USERNAME", None)
         os.environ.pop("RVC_RESUME_DATASET", None)
@@ -113,10 +119,13 @@ class ControlApiTest(unittest.IsolatedAsyncioTestCase):
         await self._login()
         os.environ["RVC_RESUME_DATASET"] = "owner/rvc-voice-resume"
         downloads: list[tuple[tuple, dict]] = []
+        downloaded_dir = Path(self.temporary.name) / "input" / "resume_download"
+        downloaded_dir.mkdir(parents=True)
+        (downloaded_dir / "resume_manifest.json").write_text("{}", encoding="utf-8")
         fake = SimpleNamespace(
             whoami=lambda **kwargs: {"username": "owner"},
             dataset_download=lambda *args, **kwargs: downloads.append((args, kwargs))
-            or str(Path(self.temporary.name) / "resume_download"),
+            or str(downloaded_dir),
         )
         with patch.dict("sys.modules", {"kagglehub": fake}):
             configured = await self.client.post(
@@ -132,10 +141,13 @@ class ControlApiTest(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(restored.status_code, 200)
-        self.assertEqual(restored.json(), {"dataset": "owner/rvc-voice-resume", "status": "ready"})
+        self.assertEqual(restored.json()["dataset"], "owner/rvc-voice-resume")
+        self.assertEqual(restored.json()["status"], "ready")
         self.assertEqual(downloads[0][0], ("owner/rvc-voice-resume",))
         self.assertTrue(downloads[0][1]["force_download"])
-        self.assertIn("RVC_RESUME_ROOT", os.environ)
+        expected_root = (control_app.TEMP_DIR / "resume_download").resolve()
+        self.assertEqual(Path(os.environ["RVC_RESUME_ROOT"]), expected_root)
+        self.assertTrue((expected_root / "resume_manifest.json").is_file())
 
     async def test_resume_dataset_can_be_configured_after_token_validation(self) -> None:
         await self._login()

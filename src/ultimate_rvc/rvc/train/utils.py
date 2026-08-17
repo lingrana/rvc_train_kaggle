@@ -160,6 +160,7 @@ def save_checkpoint(
     consecutive_increases,
     checkpoint_path,
     scaler,
+    metadata=None,
 ):
     """
     Save the model and optimizer state to a checkpoint file.
@@ -184,6 +185,8 @@ def save_checkpoint(
         "learning_rate": learning_rate,
         "scaler": scaler.state_dict(),
     }
+    if metadata:
+        checkpoint_data.update(metadata)
 
     # Create a backwards-compatible checkpoint
     checkpoint_data = replace_keys_in_dict(

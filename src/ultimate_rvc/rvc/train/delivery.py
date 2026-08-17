@@ -78,7 +78,7 @@ def atomic_json_dump(data: Any, path: Path) -> None:
 
 
 def validate_delivery(model_dir: Path, model_name: str) -> dict[str, Any]:
-    """Validate that exported artifacts load as standard RVC v2 48k F0 files."""
+    """Validate that exported artifacts load as a supported RVC v2 model."""
     import faiss
     import torch
 
@@ -98,10 +98,10 @@ def validate_delivery(model_dir: Path, model_name: str) -> dict[str, Any]:
         raise ValueError("推理模型 config 必须包含 18 项")
     if checkpoint.get("version") != "v2":
         raise ValueError("推理模型不是 RVC v2")
-    if int(checkpoint.get("sr", config[-1])) != 48000 or int(config[-1]) != 48000:
-        raise ValueError("推理模型不是 48k")
-    if int(checkpoint.get("f0", 0)) != 1:
-        raise ValueError("推理模型未启用 F0")
+    sample_rate = int(checkpoint.get("sr", config[-1]))
+    if sample_rate not in {32000, 40000, 48000} or int(config[-1]) != sample_rate:
+        raise ValueError("推理模型采样率无效或 config 不一致")
+    f0_guidance = bool(int(checkpoint.get("f0", 0)))
     if checkpoint.get("vocoder", "HiFi-GAN") != "HiFi-GAN":
         raise ValueError("推理模型不是标准 HiFi-GAN")
     if "emb_g.weight" not in weights:
@@ -113,7 +113,7 @@ def validate_delivery(model_dir: Path, model_name: str) -> dict[str, Any]:
 
     network = Synthesizer(
         *config,
-        use_f0=True,
+        use_f0=f0_guidance,
         text_enc_hidden_dim=768,
         vocoder="HiFi-GAN",
     )
@@ -149,8 +149,8 @@ def validate_delivery(model_dir: Path, model_name: str) -> dict[str, Any]:
     result = {
         "compatible": True,
         "version": "v2",
-        "sample_rate": 48000,
-        "f0": 1,
+        "sample_rate": sample_rate,
+        "f0": int(f0_guidance),
         "index_dimension": int(index.d),
         "index_vectors": int(index.ntotal),
         "generator_smoke_samples": smoke_samples,

@@ -52,6 +52,9 @@
 `owner/rvc-name-resume` 格式的恢复 Dataset，再点击“恢复历史”下载并启用它。
 也可以预先通过 `RVC_RESUME_DATASET` Secret 提供相同句柄。控制台固定
 绑定本机 `127.0.0.1:7860`，公网入口由自动重启的 Cloudflare Quick Tunnel 提供。
+恢复弹窗中选中 Dataset 后必须点击“确认恢复”才会开始下载；即使 Kaggle 返回
+`/kaggle/input` 挂载路径，控制服务也会把恢复文件复制到项目
+`temp/resume_download` 后再交给训练器读取。
 
 ## 路径与下载
 

@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import signal
+from collections.abc import Mapping
 from pathlib import Path
 
 from ultimate_rvc.common import PRETRAINED_MODELS_DIR
@@ -44,10 +45,101 @@ from ultimate_rvc.typing_extra import (
 logger = logging.getLogger(__name__)
 
 
+def _checkpoint_model_state(path: str | Path) -> tuple[Mapping[str, object], Mapping[str, object]]:
+    """Load a training checkpoint and return its metadata and model state."""
+    from ultimate_rvc.security import load_torch_checkpoint
+
+    checkpoint = load_torch_checkpoint(path)
+    if not isinstance(checkpoint, Mapping):
+        raise ValueError(f"底模不是有效 checkpoint：{Path(path).name}")
+    state = checkpoint.get("model")
+    if not isinstance(state, Mapping) or not state:
+        raise ValueError(f"底模缺少可训练的 model 权重：{Path(path).name}")
+    return checkpoint, state
+
+
+def _state_tensor(state: Mapping[str, object], suffix: str) -> object | None:
+    return next((value for key, value in state.items() if key.endswith(suffix)), None)
+
+
+def _infer_pretrained_sample_rate(
+    checkpoint: Mapping[str, object], state: Mapping[str, object]
+) -> int | None:
+    explicit = checkpoint.get("sample_rate", checkpoint.get("sr"))
+    if explicit is not None:
+        return int(explicit)
+    config = checkpoint.get("config")
+    if isinstance(config, (list, tuple)) and config:
+        return int(config[-1])
+
+    first_upsample = _state_tensor(state, "dec.ups.0.weight_v")
+    if first_upsample is None:
+        first_upsample = _state_tensor(
+            state, "dec.ups.0.parametrizations.weight.original1"
+        )
+    shape = getattr(first_upsample, "shape", ())
+    kernel_size = int(shape[-1]) if shape else 0
+    return {20: 32000, 16: 40000, 24: 48000}.get(kernel_size)
+
+
+def _validate_pretrained_generator(
+    path: str | Path,
+    sample_rate: TrainingSampleRate,
+    version: RVCVersion,
+    f0_guidance: bool,
+) -> None:
+    """Reject incompatible pretrained generators before GPU workers start."""
+    checkpoint, state = _checkpoint_model_state(path)
+    phone_weight = _state_tensor(state, "enc_p.emb_phone.weight")
+    phone_shape = getattr(phone_weight, "shape", ())
+    feature_dim = int(phone_shape[-1]) if phone_shape else 0
+    inferred_version = checkpoint.get("version")
+    if inferred_version is None:
+        inferred_version = {256: "v1", 768: "v2"}.get(feature_dim)
+    if str(inferred_version) != version.value:
+        raise ValueError(
+            f"底模版本不匹配：需要 {version.value}，实际 {inferred_version or '无法识别'}"
+        )
+
+    explicit_f0 = checkpoint.get("f0")
+    inferred_f0 = bool(int(explicit_f0)) if explicit_f0 is not None else any(
+        key.endswith("enc_p.emb_pitch.weight") for key in state
+    )
+    if inferred_f0 != f0_guidance:
+        raise ValueError(
+            f"底模 F0 配置不匹配：需要 {int(f0_guidance)}，实际 {int(inferred_f0)}"
+        )
+
+    inferred_sample_rate = _infer_pretrained_sample_rate(checkpoint, state)
+    if inferred_sample_rate is None:
+        raise ValueError(f"无法识别底模采样率：{Path(path).name}")
+    if inferred_sample_rate != int(sample_rate):
+        raise PretrainedModelIncompatibleError(Path(path).name, sample_rate)
+
+
+def _validate_pretrained_discriminator(
+    path: str | Path,
+    sample_rate: TrainingSampleRate,
+    vocoder: Vocoder,
+) -> None:
+    """Validate discriminator metadata when it is present."""
+    checkpoint, _ = _checkpoint_model_state(path)
+    explicit_sample_rate = checkpoint.get("sample_rate", checkpoint.get("sr"))
+    if explicit_sample_rate is not None and int(explicit_sample_rate) != int(sample_rate):
+        raise PretrainedModelIncompatibleError(Path(path).name, sample_rate)
+    explicit_vocoder = checkpoint.get("vocoder")
+    if explicit_vocoder is not None and str(explicit_vocoder) != vocoder.value:
+        raise ValueError(
+            f"底模声码器不匹配：需要 {vocoder.value}，实际 {explicit_vocoder}"
+        )
+
+
 def _get_pretrained_model(
     pretrained_type: PretrainedType,
     vocoder: Vocoder,
     sample_rate: TrainingSampleRate,
+    version: RVCVersion,
+    f0_guidance: bool,
     custom_pretrained: str | None = None,
 ) -> tuple[str, str]:
     """
@@ -95,6 +187,8 @@ def _get_pretrained_model(
         case PretrainedType.NONE:
             pg, pd = "", ""
         case PretrainedType.DEFAULT:
+            if version != RVCVersion.V2 or not f0_guidance:
+                raise ValueError("默认底模仅支持 RVC v2 + F0；其他结构请使用匹配的自定义底模或 None")
             base_path = PRETRAINED_MODELS_DIR / vocoder.lower()
             pg = base_path / f"f0G{str(sample_rate)[:2]}k.pth"
             pd = base_path / f"f0D{str(sample_rate)[:2]}k.pth"
@@ -108,18 +202,12 @@ def _get_pretrained_model(
                 custom_pretrained,
                 Entity.CUSTOM_PRETRAINED_MODEL,
             )
-            # NOTE simply done to appease the type checker
             custom_pretrained = custom_pretrained_path.name
-
-            # TODO need to make this cleaner
-            custom_pretrained_sample_rate = int(custom_pretrained.split(" ")[-1])
-            if not custom_pretrained_sample_rate == sample_rate:
-                raise PretrainedModelIncompatibleError(custom_pretrained, sample_rate)
 
             pg = next(
                 (
                     str(path)
-                    for path in custom_pretrained_path.iterdir()
+                    for path in sorted(custom_pretrained_path.iterdir())
                     if re.match(r"^(G|f0G).*\.pth$|.*G\.pth$", path.name)
                 ),
                 None,
@@ -132,7 +220,7 @@ def _get_pretrained_model(
             pd = next(
                 (
                     str(path)
-                    for path in custom_pretrained_path.iterdir()
+                    for path in sorted(custom_pretrained_path.iterdir())
                     if re.match(r"^(D|f0D).*\.pth$|.*D\.pth$", path.name)
                 ),
                 None,
@@ -143,6 +231,10 @@ def _get_pretrained_model(
                     custom_pretrained,
                 )
 
+    if pg:
+        _validate_pretrained_generator(pg, sample_rate, version, f0_guidance)
+    if pd:
+        _validate_pretrained_discriminator(pd, sample_rate, vocoder)
     return pg, pd
 
 
@@ -314,6 +406,11 @@ def run_training(
         phase="training",
     )
 
+    if version != RVCVersion.V2:
+        error = ValueError("当前训练管线只支持 RVC v2，v1 会产生与特征和交付格式不匹配的模型")
+        mark_failed(model_path, error)
+        raise error
+
     resume_root = os.environ.get("RVC_RESUME_ROOT")
     if resume_root and not any(model_path.glob("G_*.pth")):
         from ultimate_rvc.rvc.train.resume import restore_resume_snapshot
@@ -331,12 +428,28 @@ def run_training(
                 logger.warning("Skipped incompatible resume snapshot %s: %s", snapshot, error)
 
     try:
-        pg, pd = _get_pretrained_model(
-            pretrained_type,
-            vocoder,
-            sample_rate,
-            custom_pretrained,
-        )
+        resume_checkpoints = list(model_path.glob("G_*.pth"))
+        if resume_checkpoints:
+            resume_checkpoint = max(
+                resume_checkpoints, key=lambda path: path.stat().st_mtime_ns
+            )
+            _validate_pretrained_generator(
+                resume_checkpoint,
+                sample_rate,
+                version,
+                f0_guidance,
+            )
+            pg, pd = "", ""
+            logger.info("Resume checkpoint validated; pretrained base model is skipped")
+        else:
+            pg, pd = _get_pretrained_model(
+                pretrained_type,
+                vocoder,
+                sample_rate,
+                version,
+                f0_guidance,
+                custom_pretrained,
+            )
         device_type, device_ids = validate_devices(hardware_acceleration, gpu_ids)
     except Exception as error:
         mark_failed(model_path, error)

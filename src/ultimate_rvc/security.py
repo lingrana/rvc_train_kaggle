@@ -14,7 +14,7 @@ import stat
 import time
 import zipfile
 from collections.abc import AsyncIterator, Iterator
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager, contextmanager, nullcontext
 from pathlib import Path, PurePosixPath
 from urllib.parse import urljoin, urlsplit
 
@@ -192,7 +192,10 @@ def load_torch_checkpoint(path: os.PathLike[str] | str, *, map_location: Any = "
 
     from ultimate_rvc.typing_extra import RVCVersion, Vocoder
 
-    with torch.serialization.safe_globals([RVCVersion, Vocoder]):
+    serialization = getattr(torch, "serialization", None)
+    safe_globals = getattr(serialization, "safe_globals", None)
+    context = safe_globals([RVCVersion, Vocoder]) if safe_globals else nullcontext()
+    with context:
         return torch.load(path, map_location=map_location, weights_only=True)
 
 

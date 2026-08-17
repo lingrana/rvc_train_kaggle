@@ -44,7 +44,7 @@ def preprocess(params: dict[str, Any], started_at: float | None = None) -> None:
             bool(params.get("filter_audio", True)), bool(params.get("clean_audio", False)),
             float(params.get("clean_strength", 0.7)),
             AudioSplitMethod(params.get("split_method", "Automatic")),
-            float(params.get("chunk_len", 3.7)), float(params.get("overlap_len", 0.3)),
+            float(params.get("chunk_len", 3.0)), float(params.get("overlap_len", 0.3)),
             int(params.get("preprocess_cores", params.get("cpu_cores", 2))),
         )
     except Exception:
