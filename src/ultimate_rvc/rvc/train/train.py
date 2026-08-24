@@ -1459,6 +1459,8 @@ def train_and_evaluate(
                 images=image_dict,
                 scalars=scalar_dict,
             )
+        checkpoint_version = str(getattr(version, "value", version))
+        checkpoint_vocoder = str(getattr(vocoder, "value", vocoder))
         for idx in checkpoint_idxs:
             save_checkpoint(
                 net_g,
@@ -1471,10 +1473,10 @@ def train_and_evaluate(
                 scaler,
                 {
                     "model_kind": "generator",
-                    "version": version,
+                    "version": checkpoint_version,
                     "f0": int(f0_guidance),
                     "sample_rate": int(sample_rate),
-                    "vocoder": vocoder,
+                    "vocoder": checkpoint_vocoder,
                     "loss_metric": "mean_per_optimizer_step_v1",
                 },
             )
@@ -1489,10 +1491,10 @@ def train_and_evaluate(
                 scaler,
                 {
                     "model_kind": "discriminator",
-                    "version": version,
+                    "version": checkpoint_version,
                     "f0": int(f0_guidance),
                     "sample_rate": int(sample_rate),
-                    "vocoder": vocoder,
+                    "vocoder": checkpoint_vocoder,
                     "loss_metric": "mean_per_optimizer_step_v1",
                 },
             )

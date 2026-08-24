@@ -43,8 +43,21 @@ def extract_model(
 ):
     try:
 
+        # torch>=2.6 defaults torch.load(weights_only=True), whose allowlist
+        # rejects any pickled custom global such as RVCVersion/Vocoder enums.
+        # Flatten everything to str/int/bool so checkpoints load in any fork.
+        sr = int(getattr(sr, "value", sr))
+        vocoder = str(getattr(vocoder, "value", vocoder))
+        version = str(getattr(version, "value", version))
+        pitch_guidance = bool(pitch_guidance)
+
         model_dir = os.path.dirname(model_path)
         pathlib.Path(model_dir).mkdir(exist_ok=True, parents=True)
+
+        dataset_length = None
+        embedder_model = None
+        speakers_id = 1
+        model_author = None
 
         if pathlib.Path(os.path.join(model_dir, "model_info.json")).exists():
             with pathlib.Path(os.path.join(model_dir, "model_info.json")).open(
@@ -53,10 +66,8 @@ def extract_model(
                 data = json.load(f)
                 dataset_length = data.get("total_dataset_duration", None)
                 embedder_model = data.get("embedder_model", None)
-                speakers_id = data.get("speakers_id", 1)
-                model_author = data.get("model_author", None)
-        else:
-            dataset_length = None
+                speakers_id = data.get("speakers_id", speakers_id)
+                model_author = data.get("model_author", model_author)
 
         opt = OrderedDict(
             weight={
